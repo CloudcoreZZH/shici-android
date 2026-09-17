@@ -1,0 +1,78 @@
+# 拾词
+
+面向小米 13 Pro / Android 16 的原生离线查词和背词应用。界面设计在 `design-demo/`。
+
+**安装下载：[v0.1.0 Release](https://github.com/CloudcoreZZH/shici-android/releases/tag/v0.1.0)**（APK 约 30.6 MB）。
+
+[安装与验收说明](docs/releases/0.1.0/安装与验收说明.md) · [验证报告](docs/releases/0.1.0/验证报告.json)
+
+已通过 25 项自动化测试和发布静态检查；目标手机的实际表现仍需真机验收。本机构建交付位于 `dist/`，APK 通过 GitHub Release 分发，开发工具、缓存和签名私钥不提交到仓库。
+
+## 界面
+
+以下为 Android 16 测试环境的实际渲染，尚非小米真机截图。
+
+| 学习首页 | 查词 | 词书 |
+|---|---|---|
+| ![学习首页](docs/screenshots/home.png) | ![查词](docs/screenshots/dictionary.png) | ![词书](docs/screenshots/wordbook.png) |
+
+## 功能
+
+- ECDICT 离线英汉检索、完整原始中文释义、英文释义、音标和词形变化。
+- 多个自建词书。同一单词每次加入产生独立学习任务，累计加入次数永久保留至用户主动删除。
+- 学习和复习独立；FSRS-6 按答题记录更新记忆状态，已到期词按加入次数从高到低排列。
+- 学习中断不会丢失已完成记录，未完成任务仍在词书中。答题事务和幂等检查防止重复计分。
+- 浅色、深色和跟随系统；边到边布局、系统预测性返回、原生 Compose 弹层。
+- 使用手机已有的离线英语 TTS 语音。
+
+**考研义项频率尚未具备核验数据。** 按用户确认，首版明确标注缺失统计，保持词典原始顺序，不拿 ECDICT 的通用词频或考试标签冒充考研义项频率。当前不包含商业词典授权内容或真题例句库。
+
+## 工程组织
+
+| 目录 | 职责 |
+|---|---|
+| `core/` | 纯 Kotlin 模型、FSRS-6、复习排序及单元测试 |
+| `app/.../data/` | 只读词典和个人学习数据库；SQL 和事务边界 |
+| `app/.../ui/` | 不同页面、状态与 ViewModel；界面不直接执行 SQL |
+| `app/.../audio/` | 系统离线 TTS 的生命周期 |
+| `scripts/` | 已批准的本地工具准备、词库转换和构建脚本 |
+| `docs/` | 设计决策、权限/存储清单与验收说明 |
+
+采用 Android 自带 SQLite，不引入 ORM 代码生成器。两份数据库相互独立；个人库按版本迁移，不提供破坏性降级或自动清空数据库的捷径。数据实体通过显式映射读写，不依赖反射序列化。
+
+## 本机构建
+
+所有命令在当前工程目录执行。Python 使用指定的 NLP 环境，Java 使用项目内完整 OpenJDK 21；已有 PyCharm JBR 缺少 jlink，不能完成 Android 打包。
+
+```powershell
+& 'D:\anaconda3\envs\NLP\python.exe' .\scripts\bootstrap.py
+& 'D:\anaconda3\envs\NLP\python.exe' .\scripts\prepare_jdk.py
+& 'D:\anaconda3\envs\NLP\python.exe' .\scripts\prepare_dictionary.py
+.\scripts\build.ps1
+```
+
+前三项会下载文件，必须先得到用户对下载范围的授权。此次会话已授权必要构建工具、完整 JDK 和 ECDICT。后续增加模拟器、NDK、模型、其他词库或超过预算的下载需要另行申请。
+
+构建缓存保存于 `.cache/`，工具保存于 `.tooling/`，下载原件保存于 `.downloads/`；不修改系统 PATH 或已有 Java/Python 环境。依赖齐全后可用 `scripts/build.ps1 -Offline`。
+
+构建脚本用临时盘符指向当前目录，规避 Java 在 Windows 上解析中文参数文件路径的问题；文件没有搬动，退出时自动撤销盘符。正式 APK 使用 `.signing/` 内的本地签名身份，密码不放入源码或命令参数。请保留该目录用于后续覆盖升级，不要分享或提交版本库。
+
+## 数据与卸载
+
+应用没有网络、文件存储、通讯录、通知、无障碍、悬浮窗或开机启动权限。没有服务、广告、统计和崩溃上报 SDK。
+
+词典安装副本位于应用私有 `noBackupFilesDir`；个人数据位于应用私有 databases；设置位于应用私有 shared preferences。关闭云备份和设备迁移备份。正常卸载时 Android 负责删除这些目录。没有自动写入 Downloads、Documents 或共享根目录的代码。
+
+“清除个人学习数据”会删除全部词书、任务、记忆和答题记录并恢复空默认词书，保留随安装包提供的词典。首版未提供外部备份导出，卸载前请自行确认是否需要保留学习记录。
+
+## 算法说明
+
+FSRS-6 使用官方默认 21 个系数，按实际答题更新每个词的稳定性和难度。默认目标保持率 90%，可调 70–97%；学习步骤 1 分钟、10 分钟，遗忘后重学步骤 10 分钟。间隔随机扰动关闭，便于结果复现。
+
+目前没有训练个人系数的优化器；“个性化间隔”指记忆状态随每次答题更新，不能解释为已经在用户数据上训练过参数。加入次数属于队列排序规则，不修改 FSRS 的公式，不把加入行为伪造为答错记录。
+
+数学依据：[FSRS 官方算法](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm)。状态转移参照：[py-fsrs](https://github.com/open-spaced-repetition/py-fsrs)。词典及许可见安装包资源中的 `ECDICT-LICENSE.txt` 和 `dictionary-source.json`。
+
+## 尚需真机验收
+
+预测性返回、键盘和系统字号变化、后台恢复、离线 TTS、澎湃 OS 动画行为与卸载清理需要目标手机验证。没有接入需审核权限的小米超级岛，也不将视觉模拟宣传成系统集成。
