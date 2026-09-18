@@ -20,3 +20,4 @@ __pycache__/
 *.py[cod]
 .signing/
 app/src/main/assets/dictionary.db
+app/src/main/assets/references*.db

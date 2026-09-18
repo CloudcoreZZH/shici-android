@@ -22,7 +22,7 @@ class StudyProgressTest {
         assertEquals(0, next.completed)
         assertEquals(1, next.forgotten)
         assertEquals("claim", next.items.first().word)
-        assertEquals(now.plusSeconds(60), next.items.last().availableAt)
+        assertEquals(memory.dueAt, next.items.last().availableAt)
         assertFalse(next.finished)
     }
 

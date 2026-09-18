@@ -1,0 +1,112 @@
+{
+  "apk": "拾词-0.3.0.apk",
+  "bytes": 32459364,
+  "sha256": "ac68c448bca5abbe379f75c7600cd871d0ff16154cdfa1c9957099fa221e1595",
+  "target_sdk": 36,
+  "debuggable": false,
+  "tests": [
+    {
+      "suite": "io.github.shici.core.FsrsSchedulerTest",
+      "tests": 12,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.core.StudyDaysTest",
+      "tests": 3,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.core.StudyProgressTest",
+      "tests": 5,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.app.data.DictionaryStoreTest",
+      "tests": 4,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.app.data.LearningRepositoryTest",
+      "tests": 11,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.app.data.StudyPersistenceTest",
+      "tests": 13,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.app.ui.AppIntegrationTest",
+      "tests": 2,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.app.ui.StudyFlowTest",
+      "tests": 11,
+      "failures": 0
+    },
+    {
+      "suite": "io.github.shici.app.ui.TimeLabelsTest",
+      "tests": 2,
+      "failures": 0
+    }
+  ],
+  "dictionary_references": {
+    "input_entries": 96696,
+    "considered_senses": 77606,
+    "excluded_form_or_variant_senses": 20826,
+    "excluded_empty_or_non_chinese_senses": 2347,
+    "excluded_language_or_unknown_pos_entries": 36107,
+    "excluded_non_searchable_headword_entries": 833,
+    "excluded_ambiguous_phrase_entries": 151,
+    "excluded_encoding_or_template_senses": 3,
+    "accepted_senses": 54405,
+    "accepted_words": 33998,
+    "supplement_only_words": 9841,
+    "netem_source_rows": 5530,
+    "netem_normalized_words": 5528,
+    "netem_covered_by_base": 5528,
+    "netem_with_supplement": 2072,
+    "base_words": 768739,
+    "searchable_words": 778580
+  },
+  "lint_errors": 0,
+  "lint_warnings": [
+    {
+      "id": "UnusedAttribute",
+      "message": "Attribute `enableOnBackInvokedCallback` is only used in API level 33 and higher (current min is 31)"
+    },
+    {
+      "id": "NewerVersionAvailable",
+      "message": "A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.10.2 is available: 1.11.0"
+    },
+    {
+      "id": "NewerVersionAvailable",
+      "message": "A newer version of org.robolectric:robolectric than 4.16.1 is available: 4.17"
+    },
+    {
+      "id": "NewerVersionAvailable",
+      "message": "A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.2 is available: 1.11.0"
+    },
+    {
+      "id": "ObsoleteSdkInt",
+      "message": "This folder configuration (`v26`) is unnecessary; `minSdkVersion` is 31. Merge all the resources in this folder into `mipmap-anydpi`."
+    }
+  ],
+  "permissions": "package: io.github.shici.app\npermission: io.github.shici.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION\nuses-permission: name='io.github.shici.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'",
+  "native_16kb_alignment": {
+    "lib/arm64-v8a/libandroidx.graphics.path.so": [
+      16384,
+      16384,
+      16384
+    ],
+    "lib/x86_64/libandroidx.graphics.path.so": [
+      16384,
+      16384,
+      16384
+    ]
+  },
+  "signature_verification": "Verifies\nVerified using v1 scheme (JAR signing): false\nVerified using v2 scheme (APK Signature Scheme v2): true\nVerified using v3 scheme (APK Signature Scheme v3): false\nVerified using v3.1 scheme (APK Signature Scheme v3.1): false\nVerified using v4 scheme (APK Signature Scheme v4): false\nVerified for SourceStamp: false\nNumber of signers: 1\nSigner #1 certificate DN: CN=Shici Local App\nSigner #1 certificate SHA-256 digest: 40c703d060c272eea0d761e60338cac3ad358c41fd8f725660bd9a3d980ccedb\nSigner #1 certificate SHA-1 digest: 1d9ec090d957eb22bf7753d495c326a30c1adc23\nSigner #1 certificate MD5 digest: 93819b87d7be4b4703f8b0079e2f60e7\nSigner #1 key algorithm: RSA\nSigner #1 key size (bits): 3072\nSigner #1 public key SHA-256 digest: 5d94146e5feb0af0649d363839ce3e09c3b59b64566fb7c6141cda5b154f9c10\nSigner #1 public key SHA-1 digest: 00ea80a8d2e4c434282ea2ba8f8a57f79333dfd3\nSigner #1 public key MD5 digest: 24f41a4c0a27187fa1c14e0dd545b239",
+  "zip_alignment": "passed",
+  "device_validation": "not yet run on the user phone"
+}

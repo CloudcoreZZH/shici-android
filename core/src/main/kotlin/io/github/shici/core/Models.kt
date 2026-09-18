@@ -8,6 +8,7 @@ fun normalizeWord(value: String): String =
     Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
 
 data class Sense(val id: String, val text: String, val examCount: Int? = null, val examSource: String? = null)
+data class DictionaryReference(val headword: String, val url: String, val senses: List<String>)
 data class WordEntry(
     val word: String,
     val phonetic: String,
@@ -19,6 +20,8 @@ data class WordEntry(
     val editorialSenses: List<Sense> = emptyList(),
     val example: String = "",
     val exampleTranslation: String = "",
+    val references: List<DictionaryReference> = emptyList(),
+    val inNetem2024: Boolean = false,
 ) {
     val hasExamStatistics get() = senses.any { it.examCount != null && !it.examSource.isNullOrBlank() }
     fun examSenses(): List<Sense> = senses.sortedWith(

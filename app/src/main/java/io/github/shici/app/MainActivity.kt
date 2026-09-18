@@ -16,6 +16,9 @@ import io.github.shici.app.audio.Pronunciation
 import io.github.shici.app.ui.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
     private lateinit var pronunciation: Pronunciation
@@ -36,10 +39,19 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(model) {
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    while (true) { model.refresh(); delay(30_000) }
+                    while (true) {
+                        model.refresh()
+                        val now = Instant.now()
+                        val tomorrow = now.atZone(ZoneId.systemDefault()).toLocalDate().plusDays(1)
+                            .atStartOfDay(ZoneId.systemDefault()).toInstant()
+                        delay(Duration.between(now, tomorrow).toMillis().coerceAtLeast(1))
+                    }
                 }
             }
-            ShiciTheme(state.appearance) { ShiciApp(state, model, pronunciation::speak) }
+            ShiciTheme(state.appearance) {
+                HighRefreshRateEffect()
+                ShiciApp(state, model, pronunciation::speak)
+            }
         }
     }
     override fun onDestroy() { pronunciation.close(); super.onDestroy() }

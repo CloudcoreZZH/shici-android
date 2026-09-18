@@ -5,6 +5,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
@@ -92,7 +95,7 @@ class StudyFlowTest {
 
     @Test fun `waiting group cannot reveal or grade early`() {
         val waiting = state(false, SessionMode.LEARN).let { original -> original.copy(session = original.session!!.copy(
-            progress = original.session.progress.copy(items = listOf(StudyItem("address", availableAt = now.plusSeconds(60))),
+            progress = original.session.progress.copy(items = listOf(StudyItem("address", availableAt = now.plusSeconds(86400))),
                 answers = 1, forgotten = 1, lastActionId = "forgot"))) }
         compose.setContent { TestTheme(Appearance.LIGHT) { StudyScreen(waiting, {}, {}, {}, {}) } }
         compose.onNodeWithText("给记忆一点间隔").assertIsDisplayed()
@@ -132,6 +135,36 @@ class StudyFlowTest {
         }
         Rating.entries.forEach { compose.onNodeWithText(it.label).assertIsDisplayed() }
         screenshot("review-large-font")
+    }
+
+    @Test fun `answer transition finishes without leaving a definition on the next question`() {
+        val page = mutableStateOf(state(false))
+        compose.setContent { TestTheme(Appearance.LIGHT) {
+            StudyScreen(page.value, {}, {}, { page.value = page.value.copy(session = page.value.session!!.copy(revealed = true)) }, {})
+        } }
+        compose.onNodeWithText("显示答案").performClick()
+        compose.onNodeWithText("v. 处理；设法解决").assertIsDisplayed()
+        compose.runOnIdle {
+            val previous = page.value.session!!
+            page.value = page.value.copy(session = previous.copy(revealed = false, entry = WordEntry("claim", "", listOf(Sense("c", "v. 声称"))),
+                progress = previous.progress.copy(items = listOf(StudyItem("claim")))))
+        }
+        compose.onNodeWithText("claim").assertIsDisplayed()
+        compose.onNodeWithText("v. 声称").assertDoesNotExist()
+        compose.onNodeWithText("v. 处理；设法解决").assertDoesNotExist()
+        compose.onNodeWithText("显示答案").assertIsDisplayed()
+    }
+
+    @Test fun `Android sixteen requests 120 Hz on the Compose view and restores its previous vote`() {
+        val enabled = mutableStateOf(true)
+        var root: android.view.View? = null
+        compose.setContent {
+            val view = LocalView.current
+            SideEffect { root = view }
+            if (enabled.value) HighRefreshRateEffect()
+        }
+        compose.runOnIdle { assertEquals(120f, root!!.requestedFrameRate, 0f); enabled.value = false }
+        compose.runOnIdle { assertNotEquals(120f, root!!.requestedFrameRate) }
     }
 
     private fun screenshot(name: String) {

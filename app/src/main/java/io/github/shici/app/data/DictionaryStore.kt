@@ -12,7 +12,10 @@ import java.util.Locale
 /** Immutable dictionary has its own database. It never opens or migrates personal progress. */
 class DictionaryStore(private val context: Context) {
     private val editorial by lazy { EditorialNotes(context) }
+    private val references by lazy { ReferenceDictionary(context) }
     val editorialSize get() = editorial.size
+    val referenceSize get() = references.count("accepted_words")
+    val baseSize get() = references.count("base_words")
     private val database: SQLiteDatabase by lazy {
         val destination = File(context.noBackupFilesDir, "dictionary-v1.db")
         if (!destination.exists()) {
@@ -29,20 +32,30 @@ class DictionaryStore(private val context: Context) {
         val prefix = normalizeWord(query)
         if (prefix.isEmpty()) return emptyList()
         // A range scan uses the primary key, unlike an unindexed leading wildcard LIKE.
-        return database.rawQuery(
+        val maximum = limit.coerceIn(1, 100)
+        val base = database.rawQuery(
             "SELECT * FROM words WHERE word >= ? AND word < ? ORDER BY word LIMIT ?",
-            arrayOf(prefix, prefix + '\uffff', limit.coerceIn(1, 100).toString())
+            arrayOf(prefix, prefix + '\uffff', maximum.toString())
         ).use { cursor -> buildList {
             while (cursor.moveToNext()) add(readEntry(cursor))
         } }
+        val baseKeys = base.map { it.word }.toSet()
+        val supplemental = references.searchKeys(prefix, maximum).filter { it !in baseKeys }
+            .mapNotNull { references.fallback(it) }
+        return (base + supplemental).sortedBy { it.word }.take(maximum)
     }
 
-    @Synchronized fun find(word: String): WordEntry? = database.rawQuery(
-        "SELECT * FROM words WHERE word=?", arrayOf(normalizeWord(word))
-    ).use { if (it.moveToFirst()) readEntry(it) else null }
+    @Synchronized fun find(word: String): WordEntry? {
+        val key = normalizeWord(word)
+        val base = database.rawQuery("SELECT * FROM words WHERE word=?", arrayOf(key))
+            .use { if (it.moveToFirst()) readEntry(it) else null }
+        return base?.copy(references = references.references(key), inNetem2024 = references.containsNetem2024(key))
+            ?: references.fallback(key)?.let(editorial::apply)
+    }
 
-    @Synchronized fun size(): Int = database.rawQuery("SELECT value FROM metadata WHERE key='entries'", null)
-        .use { if (it.moveToFirst()) it.getString(0).toInt() else 0 }
+    @Synchronized fun size(): Int = references.count("searchable_words")
+
+    @Synchronized fun close() { database.close(); references.close() }
 
     private fun readEntry(cursor: android.database.Cursor): WordEntry {
         fun text(name: String) = cursor.getString(cursor.getColumnIndexOrThrow(name))

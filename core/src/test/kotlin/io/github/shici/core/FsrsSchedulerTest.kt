@@ -4,31 +4,35 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 
 class FsrsSchedulerTest {
     private val now = Instant.parse("2026-09-17T08:00:00Z")
-    private val scheduler = FsrsScheduler()
+    private val zone = ZoneId.of("Asia/Hong_Kong")
+    private val scheduler = FsrsScheduler(zone = zone)
 
-    @Test fun `new cards receive explicit short learning steps`() {
-        val intervals = Rating.entries.map { Duration.between(now, scheduler.review(null, it, now).dueAt).seconds }
-        assertEquals(listOf(60L, 330L, 600L, 8 * 86400L), intervals)
+    @Test fun `new cards use FSRS initial stability with whole day intervals`() {
+        val intervals = Rating.entries.map { StudyDays.between(now, scheduler.review(null, it, now).dueAt, zone) }
+        assertEquals(listOf(1L, 1L, 2L, 8L), intervals)
         assertEquals(2.3065, scheduler.review(null, Rating.GOOD, now).stability, 0.000001)
     }
 
-    @Test fun `two successful recalls graduate to a review card`() {
+    @Test fun `new learning uses daily review directly without minute steps`() {
         val initial = scheduler.review(null, Rating.GOOD, now)
         val reviewed = scheduler.review(initial, Rating.GOOD, initial.dueAt)
         assertEquals(Phase.REVIEW, reviewed.phase)
-        assertTrue(reviewed.dueAt.isAfter(initial.dueAt.plusSeconds(86399)))
+        assertEquals(Phase.REVIEW, initial.phase)
+        assertTrue(StudyDays.between(initial.dueAt, reviewed.dueAt, zone) >= 1)
         assertEquals(2, reviewed.repetitions)
     }
 
-    @Test fun `lapse is preserved and relearning is due in ten minutes`() {
+    @Test fun `lapse is preserved and forgetting is scheduled for a future day`() {
         val initial = scheduler.review(null, Rating.EASY, now)
         val forgotten = scheduler.review(initial, Rating.AGAIN, initial.dueAt)
-        assertEquals(Phase.RELEARNING, forgotten.phase)
+        assertEquals(Phase.REVIEW, forgotten.phase)
         assertEquals(1, forgotten.lapses)
-        assertEquals(600L, Duration.between(initial.dueAt, forgotten.dueAt).seconds)
+        assertTrue(StudyDays.between(initial.dueAt, forgotten.dueAt, zone) >= 1)
+        assertEquals(0, forgotten.dueAt.atZone(zone).hour)
         assertTrue(forgotten.stability < initial.stability)
     }
 
@@ -36,10 +40,34 @@ class FsrsSchedulerTest {
         val card = scheduler.review(null, Rating.EASY, now)
         for (grade in Rating.entries) {
             val ordinary = scheduler.review(card, grade, card.dueAt)
-            val conservative = FsrsScheduler(0.95).review(card, grade, card.dueAt)
+            val conservative = FsrsScheduler(0.95, zone).review(card, grade, card.dueAt)
             assertFalse(conservative.dueAt.isAfter(ordinary.dueAt))
             assertTrue(ordinary.difficulty in 1.0..10.0)
             assertTrue(ordinary.stability.isFinite())
+        }
+    }
+
+    @Test fun `near midnight review is available throughout its due date`() {
+        val late = Instant.parse("2026-09-17T15:59:30Z")
+        assertEquals(Instant.parse("2026-09-17T16:00:00Z"), scheduler.review(null, Rating.AGAIN, late).dueAt)
+        assertEquals(Instant.parse("2026-09-18T16:00:00Z"), scheduler.review(null, Rating.GOOD, late).dueAt)
+    }
+
+    @Test fun `elapsed time follows calendar days even after a short night`() {
+        val card = scheduler.review(null, Rating.GOOD, Instant.parse("2026-09-17T15:59:00Z"))
+        val morning = Instant.parse("2026-09-18T00:00:00Z")
+        assertTrue(scheduler.retrievability(card, morning) < 1.0)
+    }
+
+    @Test fun `all grades at both retention extremes schedule valid future dates`() {
+        for (retention in listOf(0.7, 0.9, 0.97)) {
+            val algorithm = FsrsScheduler(retention, zone)
+            for (rating in Rating.entries) {
+                val card = algorithm.review(null, rating, now)
+                assertTrue(StudyDays.between(now, card.dueAt, zone) >= 1)
+                assertEquals(0, card.dueAt.atZone(zone).hour)
+                assertTrue(card.dueAt.isAfter(now))
+            }
         }
     }
 

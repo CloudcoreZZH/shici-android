@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "sources": {
+    "wiki-traditional.jsonl": {
+      "url": "https://kaikki.org/zhwiktionary/%E8%8B%B1%E8%AA%9E/kaikki.org-dictionary-%E8%8B%B1%E8%AA%9E.jsonl",
+      "bytes": 61201598,
+      "sha256": "9fbd01e0caced6c062ec63c1b123a67dcbdea6f9b5ca92a150d58d02caa303e4"
+    },
+    "wiki-simplified.jsonl": {
+      "url": "https://kaikki.org/zhwiktionary/%E8%8B%B1%E8%AF%AD/kaikki.org-dictionary-%E8%8B%B1%E8%AF%AD.jsonl",
+      "bytes": 21109425,
+      "sha256": "f07283d8a022ef5382df30ad525cc5cb182c81ad987bd6b02cb89ad370bf5223"
+    },
+    "netem-2024.json": {
+      "url": "https://raw.githubusercontent.com/exam-data/NETEMVocabulary/70dc6b68c855f21e666a7a291ff8ead5ca1f7b44/netem_full_list.json",
+      "bytes": 1106068,
+      "sha256": "6d71a301321056291902bc4804e223c6926dca0d629a45076a6ca5adab185f62"
+    },
+    "NETEM-LICENSE.txt": {
+      "url": "https://raw.githubusercontent.com/exam-data/NETEMVocabulary/70dc6b68c855f21e666a7a291ff8ead5ca1f7b44/LICENSE",
+      "bytes": 20857,
+      "sha256": "57e1f486c22021dd2fb38a96463d7261e02df3235c2d35ce5c104abb17a5df4b"
+    },
+    "NETEM-README.md": {
+      "url": "https://raw.githubusercontent.com/exam-data/NETEMVocabulary/70dc6b68c855f21e666a7a291ff8ead5ca1f7b44/README.md",
+      "bytes": 1712,
+      "sha256": "b33322700ae75fe7c3028d6a937580bac74144af55c3cd6ae76eb595bc3d96b0"
+    },
+    "kaikki-source.html": {
+      "url": "https://kaikki.org/zhwiktionary/",
+      "bytes": 31829,
+      "sha256": "5ff72a2570cc8d9be16d03de5c50967c0489b795e854ecfa706aadd173f37280"
+    },
+    "CC-BY-SA-4.0.txt": {
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt",
+      "bytes": 20138,
+      "sha256": "28a9529c7d0bb4dc51f4bf5c116a3d16ef247a052f7591466768ddf563fd1cf5"
+    }
+  },
+  "wiktionary_attribution": "Chinese Wiktionary contributors; extracted by Kaikki.org / Wiktextract",
+  "wiktionary_license": "CC BY-SA 4.0",
+  "netem_attribution": "exam-data/NETEMVocabulary contributors",
+  "netem_license": "CC BY-NC-SA 4.0",
+  "transformations": "Filtered, normalized search keys, deduplicated; original Chinese glosses retained; labels translated where mapped.",
+  "counts": {
+    "input_entries": 96696,
+    "considered_senses": 77606,
+    "excluded_form_or_variant_senses": 20826,
+    "excluded_empty_or_non_chinese_senses": 2347,
+    "excluded_language_or_unknown_pos_entries": 36107,
+    "excluded_non_searchable_headword_entries": 833,
+    "excluded_ambiguous_phrase_entries": 151,
+    "excluded_encoding_or_template_senses": 3,
+    "accepted_senses": 54405,
+    "accepted_words": 33998,
+    "supplement_only_words": 9841,
+    "netem_source_rows": 5530,
+    "netem_normalized_words": 5528,
+    "netem_covered_by_base": 5528,
+    "netem_with_supplement": 2072,
+    "base_words": 768739,
+    "searchable_words": 778580
+  },
+  "netem_duplicate_keys": [
+    "may",
+    "march"
+  ],
+  "exam_target": "2027 English I",
+  "target_syllabus_verified": false,
+  "exam_sense_frequencies": false,
+  "professional_lexical_review": false,
+  "database_bytes": 4141056,
+  "database_sha256": "8553a7b0c412943c5f9d9733fd4ee400d0f28edaca45469a03740cb19bc1ae50"
+}

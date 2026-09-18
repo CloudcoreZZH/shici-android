@@ -1,6 +1,8 @@
 package io.github.shici.app.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -68,7 +70,8 @@ import java.util.Locale
         BookPicker(state.books, state.snapshot?.book, chooseBook, createBook)
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(if (due > 0) "先巩固，再向前。" else if (pending > 0) "把见过的词，记住。" else "从一个生词开始。",
+                Text(if (due > 0) "先巩固，再向前。" else if (learningWaits) "今天先到这里。" else if (pending > 0) "把见过的词，记住。"
+                    else if (hasWords) "今天的任务，完成了。" else "从一个生词开始。",
                     fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Text(when {
                     due > 0 -> "有 $due 个词到了复习时间。反复加入的词会先出现。"
@@ -91,6 +94,7 @@ import java.util.Locale
             TaskTile("待学习", pending, "次任务", learn, Modifier.weight(1f))
             TaskTile("到期复习", due, "个单词", review, Modifier.weight(1f))
         }
+        if (state.snapshot?.words?.any { it.pendingCount == 0 && it.memory != null } == true) ReviewCalendar(state)
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("今天的积累", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -104,6 +108,36 @@ import java.util.Locale
             QuietText("每次加入都再学一次 · 同组不连续刷同一个词")
         }
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable private fun ReviewCalendar(state: AppState) {
+    val zone = ZoneId.systemDefault()
+    val today = state.now.atZone(zone).toLocalDate()
+    val scheduled = remember(state.snapshot, today, zone) {
+        state.snapshot?.words.orEmpty().filter { it.pendingCount == 0 && it.memory != null }
+            .groupingBy { it.memory!!.dueAt.atZone(zone).toLocalDate().coerceAtLeast(today) }.eachCount()
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("复习日历", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            QuietText("未来 7 天")
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items((0L..6L).map(today::plusDays), key = { it.toEpochDay() }) { day ->
+                val isToday = day == today
+                Surface(shape = RoundedCornerShape(18.dp),
+                    color = if (isToday) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column(Modifier.widthIn(min = 44.dp).padding(horizontal = 9.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        QuietText(if (isToday) "今天" else day.format(DateTimeFormatter.ofPattern("EEE", Locale.CHINA)))
+                        Text(day.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("${scheduled[day] ?: 0} 词", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+        QuietText("日期按已学记录预计，会随之后的答题调整。")
     }
 }
 

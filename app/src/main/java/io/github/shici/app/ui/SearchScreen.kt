@@ -67,7 +67,7 @@ import io.github.shici.core.WordEntry
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
             Spacer(Modifier.height(24.dp))
             WordHeading(entry, speak)
-            if ("ky" in entry.tags) AssistChip(onClick = {}, label = { Text("考研词汇") })
+            if ("ky" in entry.tags) QuietText("ECDICT 考研标记", Modifier.padding(vertical = 8.dp))
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf("学习释义", "全部释义", "词形与英文").forEachIndexed { index, label ->
                     FilterChip(section == index, { section = index }, label = { Text(label) })
@@ -115,6 +115,10 @@ import io.github.shici.core.WordEntry
                 Text(entry.english.ifBlank { "词典暂未提供英文释义。" })
             }
             Spacer(Modifier.height(12.dp))
+            if (section == 1 && entry.references.isNotEmpty()) DictionaryReferences(entry)
+            if (entry.inNetem2024) {
+                QuietText("NETEM 2024 参考词表收录 · 非 2027 大纲", Modifier.padding(vertical = 8.dp))
+            }
             QuietText("完整释义：${entry.source} 离线词典${if (entry.editorialSenses.isNotEmpty()) " · 学习释义：拾词编辑版" else ""}")
             Spacer(Modifier.height(24.dp))
         }

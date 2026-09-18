@@ -6,8 +6,12 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -26,13 +30,15 @@ import androidx.compose.ui.unit.sp
 import io.github.shici.core.SessionMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun ShiciApp(state: AppState, model: AppViewModel, speak: (String) -> Unit) {
     val snackbars = remember { SnackbarHostState() }
-    var backProgress by remember { mutableFloatStateOf(0f) }
+    val backProgress = remember { Animatable(0f) }
     var backDirection by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(model) { for (message in model.messages) snackbars.showSnackbar(message) }
     val waitingUntil = state.session?.current?.availableAt
@@ -44,11 +50,13 @@ import java.time.Instant
     }
     PredictiveBackHandler(state.canGoBack) { events ->
         try { events.collect {
-            backProgress = it.progress
+            backProgress.snapTo(it.progress)
             backDirection = if (it.swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
         }; model.goBack() }
-        catch (_: CancellationException) { /* Cancelled gestures restore the current screen. */ }
-        finally { backProgress = 0f }
+        catch (_: CancellationException) {
+            withContext(NonCancellable) { backProgress.animateTo(0f, spring(dampingRatio = 1f, stiffness = 800f)) }
+        }
+        finally { withContext(NonCancellable) { backProgress.snapTo(0f) } }
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(containerColor = Color.Transparent, contentWindowInsets = WindowInsets.safeDrawing,
@@ -65,12 +73,24 @@ import java.time.Instant
                 }
             }) { padding ->
             Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding().fillMaxSize().graphicsLayer {
-                scaleX = 1 - backProgress * 0.06f; scaleY = 1 - backProgress * 0.06f
-                translationX = backProgress * 32.dp.toPx() * backDirection
+                scaleX = 1 - backProgress.value * 0.04f; scaleY = 1 - backProgress.value * 0.04f
+                translationX = backProgress.value * 24.dp.toPx() * backDirection
+                shape = RoundedCornerShape((backProgress.value * 24).dp)
+                clip = backProgress.value > 0f
             }, contentAlignment = Alignment.TopCenter) {
                 AnimatedContent(targetState = state, contentKey = ::screenKey,
                     modifier = Modifier.widthIn(max = 840.dp).fillMaxSize(),
-                    transitionSpec = { (fadeIn(tween(180)) + slideInHorizontally(tween(180)) { it / 16 }) togetherWith fadeOut(tween(120)) },
+                    transitionSpec = {
+                        val direction = when {
+                            screenDepth(targetState) > screenDepth(initialState) -> 1
+                            screenDepth(targetState) < screenDepth(initialState) -> -1
+                            targetState.tab.ordinal > initialState.tab.ordinal -> 1
+                            else -> -1
+                        }
+                        ((fadeIn(Motion.enter()) + slideInHorizontally(Motion.enter()) { direction * it / 18 }) togetherWith
+                            (fadeOut(Motion.exit()) + slideOutHorizontally(Motion.exit()) { -direction * it / 24 }))
+                            .using(null)
+                    },
                     label = "screen") { state ->
                     Box(Modifier.fillMaxSize()) {
                     when {
@@ -106,4 +126,10 @@ private fun screenKey(state: AppState): String = when {
     state.detail != null -> "word:${state.detail.word}"
     state.reviewOverview -> "review"
     else -> state.tab.name
+}
+
+private fun screenDepth(state: AppState): Int = when {
+    state.session != null -> 2
+    state.detail != null || state.reviewOverview -> 1
+    else -> 0
 }

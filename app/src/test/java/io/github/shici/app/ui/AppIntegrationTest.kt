@@ -21,6 +21,22 @@ import java.io.File
 class AppIntegrationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun `supplementary definitions expand with offline attribution and historical year`() {
+        awaitText("去查词")
+        compose.onNodeWithText("查词").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("hospital")
+        val result = hasText("hospital") and !hasSetTextAction()
+        compose.waitUntil(20_000) { compose.onAllNodes(result).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(result).performClick()
+        awaitText("加入词书 +1")
+        compose.onNodeWithText("全部释义").performClick()
+        compose.onNodeWithText("展开维基补充释义", substring = true).performScrollTo().performClick()
+        compose.onNodeWithText("hospital · 原词条").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("名词 · 醫院").assertExists()
+        screenshot("dictionary-reference-real")
+        compose.onNodeWithText("NETEM 2024 参考词表收录 · 非 2027 大纲").performScrollTo().assertIsDisplayed()
+    }
+
     @Test fun `real lookup two additions and one completed learning task`() {
         awaitText("去查词")
         screenshot("home-real")
@@ -56,6 +72,15 @@ class AppIntegrationTest {
         compose.onNodeWithText("学习").performClick()
         awaitText("把见过的词，记住。")
         screenshot("home-progress-real")
+        compose.onNodeWithText("开始学习").performClick()
+        awaitText("显示答案")
+        compose.onNodeWithText("显示答案").performClick()
+        compose.onNodeWithText("记得").performClick()
+        awaitText("这一组，完成了")
+        compose.onNodeWithText("先到这里").performClick()
+        awaitText("复习日历")
+        compose.onNodeWithText("复习日历").performScrollTo().assertIsDisplayed()
+        screenshot("review-calendar-real")
     }
 
     private fun awaitText(text: String) {

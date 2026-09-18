@@ -27,6 +27,8 @@ data class AppState(
     val snapshot: BookSnapshot? = null,
     val meanings: Map<String, String> = emptyMap(),
     val dictionarySize: Int = 0,
+    val baseDictionarySize: Int = 0,
+    val referenceSize: Int = 0,
     val editorialSize: Int = 0,
     val adding: Boolean = false,
     val session: StudySession? = null,

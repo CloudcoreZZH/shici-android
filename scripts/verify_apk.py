@@ -33,6 +33,10 @@ def main():
     libraries = {}
     with zipfile.ZipFile(ROOT / APK) as package:
         assert 'assets/dictionary.db' in package.namelist()
+        for required in ['references.db', 'references-source.json', 'WIKTIONARY-LICENSE.txt', 'NETEM-LICENSE.txt']:
+            assert f'assets/{required}' in package.namelist(), required
+        reference_info = json.loads(package.read('assets/references-source.json'))
+        assert hashlib.sha256(package.read('assets/references.db')).hexdigest() == reference_info['database_sha256']
         for name in package.namelist():
             if name.startswith(('lib/arm64-v8a/', 'lib/x86_64/')) and name.endswith('.so'):
                 binary = package.read(name)
@@ -63,6 +67,7 @@ def main():
     report = {'apk': delivered.name, 'bytes': delivered.stat().st_size,
               'sha256': hashlib.sha256(delivered.read_bytes()).hexdigest(),
               'target_sdk': 36, 'debuggable': False, 'tests': tests,
+              'dictionary_references': reference_info['counts'],
               'lint_errors': 0, 'lint_warnings': [{'id': issue.attrib['id'], 'message': issue.attrib['message']} for issue in issues],
               'permissions': permissions.strip(), 'native_16kb_alignment': libraries,
               'signature_verification': signed.strip(), 'zip_alignment': 'passed',

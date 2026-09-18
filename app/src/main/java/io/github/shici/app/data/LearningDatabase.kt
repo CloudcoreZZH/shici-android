@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class LearningDatabase(context: Context) : SQLiteOpenHelper(context, "learning.db", null, 2) {
+class LearningDatabase(context: Context) : SQLiteOpenHelper(context, "learning.db", null, 3) {
     override fun onConfigure(db: SQLiteDatabase) {
         db.setForeignKeyConstraintsEnabled(true)
         setWriteAheadLoggingEnabled(true)
@@ -33,12 +33,15 @@ class LearningDatabase(context: Context) : SQLiteOpenHelper(context, "learning.d
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        check(oldVersion == 1 && newVersion == 2) { "不支持的数据版本 $oldVersion → $newVersion，请保留数据。" }
-        db.execSQL("ALTER TABLE additions ADD COLUMN available_at INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("ALTER TABLE reviews ADD COLUMN previous_memory TEXT")
-        db.execSQL("ALTER TABLE reviews ADD COLUMN previous_session TEXT")
-        db.execSQL("ALTER TABLE reviews ADD COLUMN undone INTEGER NOT NULL DEFAULT 0")
-        createSessions(db)
+        check(oldVersion in 1..2 && newVersion == 3) { "不支持的数据版本 $oldVersion → $newVersion，请保留数据。" }
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE additions ADD COLUMN available_at INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE reviews ADD COLUMN previous_memory TEXT")
+            db.execSQL("ALTER TABLE reviews ADD COLUMN previous_session TEXT")
+            db.execSQL("ALTER TABLE reviews ADD COLUMN undone INTEGER NOT NULL DEFAULT 0")
+            createSessions(db)
+        }
+        DailyScheduleMigration.migrate(db)
     }
 
     private fun createSessions(db: SQLiteDatabase) {

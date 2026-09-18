@@ -3,6 +3,11 @@ package io.github.shici.app.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,15 +39,24 @@ import io.github.shici.core.*
             Text("${progress.completed} / ${progress.total}", Modifier.padding(end = 20.dp),
                 style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        LinearProgressIndicator(progress = { progress.completed.toFloat() / progress.total.coerceAtLeast(1) },
+        val animatedProgress = animateFloatAsState(progress.completed.toFloat() / progress.total.coerceAtLeast(1),
+            animationSpec = Motion.enter(), label = "study-progress")
+        LinearProgressIndicator(progress = { animatedProgress.value },
+            trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
         when {
             session.finished -> StudyResult(state, back, next)
             waiting -> WaitingCard(state, back, other)
             else -> {
                 val entry = session.entry ?: return
-                StudyContent(state, entry, speak, Modifier.weight(1f))
-                Surface(shadowElevation = 2.dp, color = MaterialTheme.colorScheme.surface) {
+                AnimatedContent(state, modifier = Modifier.weight(1f),
+                    contentKey = { it.session?.current?.let { card -> card.taskId ?: card.word } },
+                    transitionSpec = { ((fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { it / 24 }) togetherWith
+                        fadeOut(Motion.exit())).using(null) }, label = "study-word") { page ->
+                    page.session?.entry?.let { StudyContent(page, it, speak, Modifier.fillMaxSize()) }
+                }
+                Surface(color = MaterialTheme.colorScheme.surface) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
                     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!session.revealed) {
                             AccentButton("显示答案", reveal, Modifier.fillMaxWidth(), !session.saving)
@@ -50,7 +64,7 @@ import io.github.shici.core.*
                         } else {
                             Text("刚才回想得怎么样？", style = MaterialTheme.typography.labelLarge)
                             RatingButtons(state, answer)
-                            QuietText(if (session.mode == SessionMode.LEARN) "忘记不会消耗学习任务；下次到期再巩固。" else "按揭晓前的回忆表现选择，间隔由记忆记录计算。")
+                            QuietText(if (session.mode == SessionMode.LEARN) "忘记仍会保留任务 · 按天安排下次巩固" else "按真实回忆评分 · 最短次日复习")
                         }
                     }
                 }
@@ -75,7 +89,7 @@ import io.github.shici.core.*
                     WordHeading(entry, speak, centered = true)
                 }
                 Column(Modifier.weight(0.58f).fillMaxHeight().verticalScroll(scroll)) {
-                    if (session.revealed) MeaningCard(entry) else RecallPrompt()
+                    AnswerReveal(session.revealed, entry)
                 }
             }
         } else {
@@ -85,11 +99,18 @@ import io.github.shici.core.*
                 Spacer(Modifier.height(24.dp))
                 WordHeading(entry, speak, centered = true)
                 Spacer(Modifier.height(24.dp))
-                if (!session.revealed) RecallPrompt()
-                AnimatedVisibility(session.revealed, enter = fadeIn() + expandVertically()) { MeaningCard(entry) }
+                AnswerReveal(session.revealed, entry)
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+}
+
+@Composable private fun AnswerReveal(revealed: Boolean, entry: WordEntry) {
+    AnimatedContent(revealed,
+        transitionSpec = { ((fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { it / 30 }) togetherWith
+            fadeOut(Motion.exit())).using(null) }, label = "answer-reveal") { shown ->
+        if (shown) MeaningCard(entry) else RecallPrompt()
     }
 }
 
@@ -125,9 +146,11 @@ import io.github.shici.core.*
 @Composable private fun RatingButtons(state: AppState, answer: (Rating) -> Unit) {
     val session = state.session ?: return
     val memory = state.snapshot?.words?.find { it.word == session.current?.word }?.memory
-    val intervals = Rating.entries.associateWith { rating -> runCatching {
-        intervalLabel(state.now, FsrsScheduler(state.retention).review(memory, rating, state.now).dueAt)
-    }.getOrNull() }
+    val intervals = remember(memory, state.retention, state.now) {
+        Rating.entries.associateWith { rating -> runCatching {
+            intervalLabel(state.now, FsrsScheduler(state.retention).review(memory, rating, state.now).dueAt)
+        }.getOrNull() }
+    }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val columns = if (maxWidth >= 560.dp) 4 else 2
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -137,7 +160,16 @@ import io.github.shici.core.*
                         val description = when (rating) {
                             Rating.AGAIN -> "没想起"; Rating.HARD -> "费力想起"; Rating.GOOD -> "正确想起"; Rating.EASY -> "立刻想起"
                         }
-                        val colors = if (rating == Rating.GOOD) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors()
+                        val colors = when (rating) {
+                            Rating.GOOD -> ButtonDefaults.buttonColors()
+                            Rating.AGAIN -> ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer)
+                            Rating.HARD -> ButtonDefaults.filledTonalButtonColors()
+                            Rating.EASY -> ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
                         FilledTonalButton({ answer(rating) }, modifier = Modifier.weight(1f).heightIn(min = 62.dp),
                             enabled = !session.saving && intervals[rating] != null, shape = RoundedCornerShape(16.dp), colors = colors,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
@@ -162,14 +194,18 @@ import io.github.shici.core.*
         Spacer(Modifier.height(24.dp))
         Icon(Icons.Outlined.Schedule, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
         Text("给记忆一点间隔", style = MaterialTheme.typography.headlineMedium)
-        Text("还有 ${progress.items.size} 个词需要再巩固。\n最早可在${dueLabel(state.now, due)}继续。",
+        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Text(dueLabel(state.now, due), Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
+                style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Text("还有 ${progress.items.size} 个词需要再巩固，已安排到上面的日期。到期当天随时可以继续。",
             textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
         QuietText("未记住的学习任务仍然保留，离开页面也不会丢失。")
         if ((state.snapshot?.readyLearningWords ?: 0) > 0) {
             AccentButton("先学其他词", other, Modifier.fillMaxWidth())
             QuietText("另开一组可学词，当前等待任务会留到后续组。")
         }
-        AccentButton("稍后继续", back, Modifier.fillMaxWidth())
+        OutlinedButton(back, Modifier.fillMaxWidth().heightIn(min = 54.dp)) { Text("今天先到这里") }
     }
 }
 

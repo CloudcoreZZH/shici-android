@@ -10,6 +10,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], application = Application::class)
@@ -30,12 +31,13 @@ class StudyPersistenceTest {
         val progress = grade(start(), Rating.AGAIN, "forgot")
         assertEquals(1, repo.snapshot(1, now).pendingCount)
         assertEquals(0, repo.snapshot(1, now).completedToday)
-        assertEquals(now.plusSeconds(60), progress.items.single().availableAt)
+        assertEquals(StudyDays.dueAfter(now, 1, ZoneId.systemDefault()), progress.items.single().availableAt)
         assertThrows(IllegalStateException::class.java) { grade(progress, Rating.GOOD, "early") }
-        val done = grade(progress, Rating.GOOD, "remember", now.plusSeconds(60))
+        val nextDay = progress.items.single().availableAt
+        val done = grade(progress, Rating.GOOD, "remember", nextDay)
         assertTrue(done.finished)
-        assertEquals(0, repo.snapshot(1, now.plusSeconds(60)).pendingCount)
-        assertEquals(1, repo.snapshot(1, now.plusSeconds(60)).completedToday)
+        assertEquals(0, repo.snapshot(1, nextDay).pendingCount)
+        assertEquals(1, repo.snapshot(1, nextDay).completedToday)
     }
 
     @Test fun `session and memory survive process style database reopen`() {
@@ -59,7 +61,7 @@ class StudyPersistenceTest {
         grade(other, Rating.GOOD, "claim-answer")
         val waiting = start()
         assertEquals("a1", waiting.items.single().taskId)
-        assertEquals(now.plusSeconds(60), waiting.items.single().availableAt)
+        assertEquals(StudyDays.dueAfter(now, 1, ZoneId.systemDefault()), waiting.items.single().availableAt)
     }
 
     @Test fun `undo first answer restores original task and removes newly created memory`() {
@@ -146,9 +148,9 @@ class StudyPersistenceTest {
         assertEquals("旧词书", repo.books().single().name)
         assertEquals("old", repo.pendingTasks(1).single().id)
         assertEquals(Instant.EPOCH, repo.pendingTasks(1).single().availableAt)
-        assertEquals(2, database.writableDatabase.version)
+        assertEquals(3, database.writableDatabase.version)
         assertEquals(2.3, repo.memory(1, "address")!!.stability, 0.000001)
-        assertEquals(now.plusSeconds(600), repo.memory(1, "address")!!.dueAt)
+        assertEquals(StudyDays.dueAfter(now, 1, ZoneId.systemDefault()), repo.memory(1, "address")!!.dueAt)
         assertEquals(1, start().total)
         database.readableDatabase.rawQuery("SELECT COUNT(*) FROM reviews WHERE action_id='old-r' AND undone=0", null).use {
             assertTrue(it.moveToFirst()); assertEquals(1, it.getInt(0))
@@ -165,6 +167,36 @@ class StudyPersistenceTest {
         assertThrows(IllegalStateException::class.java) { repo.undoAnswer(1, SessionMode.LEARN, "a1") }
         assertEquals(2, repo.snapshot(1, now).completedToday)
         assertEquals(0, repo.snapshot(1, now).pendingCount)
+    }
+
+    @Test fun `version two migration preserves deferred group and cannot restore minute schedules through undo`() {
+        add("address", "a1"); add("address", "a2")
+        val progress = grade(start(), Rating.AGAIN, "forgot")
+        val minuteDue = now.plusSeconds(60)
+        val oldGroup = progress.copy(items = progress.items.map { it.copy(availableAt = minuteDue) })
+        database.writableDatabase.execSQL("UPDATE memory SET due_at=?,phase='LEARNING',step=0", arrayOf<Any>(minuteDue.toEpochMilli()))
+        database.writableDatabase.execSQL("UPDATE additions SET available_at=? WHERE id='a1'", arrayOf<Any>(minuteDue.toEpochMilli()))
+        database.writableDatabase.execSQL("UPDATE sessions SET payload=?", arrayOf<Any>(StudyCodec.encode(oldGroup)))
+        val before = repo.memory(1, "address")!!
+        database.writableDatabase.version = 2
+        database.close(); database = LearningDatabase(app); repo = LearningRepository(database)
+        val migrated = repo.session(1, SessionMode.LEARN)!!
+        val nextDay = StudyDays.dueAfter(now, 1, ZoneId.systemDefault())
+        assertEquals(nextDay, migrated.items.single().availableAt)
+        assertNull(migrated.lastActionId)
+        assertEquals(2, repo.snapshot(1, now).pendingCount)
+        assertEquals(2, repo.snapshot(1, now).totalAdditions)
+        assertEquals(before.stability, repo.memory(1, "address")!!.stability, 0.0)
+        assertEquals(before.repetitions, repo.memory(1, "address")!!.repetitions)
+        assertEquals(before.lastReviewedAt, repo.memory(1, "address")!!.lastReviewedAt)
+        assertEquals(nextDay, repo.memory(1, "address")!!.dueAt)
+        assertThrows(IllegalStateException::class.java) { repo.undoAnswer(1, SessionMode.LEARN, "forgot") }
+        assertThrows(IllegalStateException::class.java) { grade(migrated, Rating.GOOD, "early", now.plusSeconds(3600)) }
+        assertTrue(grade(migrated, Rating.GOOD, "next-day", nextDay).finished)
+        assertEquals(1, repo.snapshot(1, nextDay).pendingCount)
+        database.readableDatabase.rawQuery("SELECT COUNT(*) FROM reviews WHERE action_id='forgot'", null).use {
+            assertTrue(it.moveToFirst()); assertEquals(1, it.getInt(0))
+        }
     }
 
     @Test fun `editorial notes preserve dictionary meaning and clearly separate examples`() {
