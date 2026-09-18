@@ -53,12 +53,12 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
                 repository.session(bookId, mode)?.takeUnless { it.finished }?.let { mode to it }
             }.toMap()
             DashboardData(books, snapshot, meanings, dictionary.size(), dictionary.editorialSize, sessions,
-                dictionary.baseSize, dictionary.referenceSize)
+                dictionary.baseSize, dictionary.referenceSize, dictionary.frequencySize)
         }
         mutable.update { it.copy(loading = false, fatalError = null, now = now, books = result.books,
             snapshot = result.snapshot, meanings = result.meanings, dictionarySize = result.dictionarySize,
             editorialSize = result.editorialSize, savedSessions = result.sessions,
-            baseDictionarySize = result.baseSize, referenceSize = result.referenceSize) }
+            baseDictionarySize = result.baseSize, referenceSize = result.referenceSize, frequencySize = result.frequencySize) }
     }
 
     fun changeTab(tab: Tab) {
@@ -244,4 +244,4 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
 
 private data class DashboardData(val books: List<WordBook>, val snapshot: BookSnapshot,
     val meanings: Map<String, String>, val dictionarySize: Int, val editorialSize: Int,
-    val sessions: Map<SessionMode, StudyProgress>, val baseSize: Int, val referenceSize: Int)
+    val sessions: Map<SessionMode, StudyProgress>, val baseSize: Int, val referenceSize: Int, val frequencySize: Int)

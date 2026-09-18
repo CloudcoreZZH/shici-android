@@ -3,8 +3,8 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">#FAFAF7</item>
-        <item name="android:windowSplashScreenBackground">#FAFAF7</item>
+        <item name="android:windowBackground">@color/page_background</item>
+        <item name="android:windowSplashScreenBackground">@color/page_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher</item>
     </style>
 </resources>

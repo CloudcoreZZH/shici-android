@@ -13,6 +13,8 @@ import java.util.Locale
 class DictionaryStore(private val context: Context) {
     private val editorial by lazy { EditorialNotes(context) }
     private val references by lazy { ReferenceDictionary(context) }
+    private val frequencies by lazy { ExamFrequencyCatalog(context) }
+    val frequencySize get() = frequencies.size
     val editorialSize get() = editorial.size
     val referenceSize get() = references.count("accepted_words")
     val baseSize get() = references.count("base_words")
@@ -41,7 +43,7 @@ class DictionaryStore(private val context: Context) {
         } }
         val baseKeys = base.map { it.word }.toSet()
         val supplemental = references.searchKeys(prefix, maximum).filter { it !in baseKeys }
-            .mapNotNull { references.fallback(it) }
+            .mapNotNull { references.fallback(it)?.let(frequencies::apply) }
         return (base + supplemental).sortedBy { it.word }.take(maximum)
     }
 
@@ -49,8 +51,8 @@ class DictionaryStore(private val context: Context) {
         val key = normalizeWord(word)
         val base = database.rawQuery("SELECT * FROM words WHERE word=?", arrayOf(key))
             .use { if (it.moveToFirst()) readEntry(it) else null }
-        return base?.copy(references = references.references(key), inNetem2024 = references.containsNetem2024(key))
-            ?: references.fallback(key)?.let(editorial::apply)
+        return (base?.copy(references = references.references(key), inNetem2024 = references.containsNetem2024(key))
+            ?: references.fallback(key)?.let(editorial::apply))?.let(frequencies::apply)
     }
 
     @Synchronized fun size(): Int = references.count("searchable_words")
@@ -60,16 +62,12 @@ class DictionaryStore(private val context: Context) {
     private fun readEntry(cursor: android.database.Cursor): WordEntry {
         fun text(name: String) = cursor.getString(cursor.getColumnIndexOrThrow(name))
         val word = text("word")
-        val stats = database.rawQuery("SELECT sense_id,count,source FROM exam_senses WHERE word=?", arrayOf(word))
-            .use { rows -> buildMap {
-                while (rows.moveToNext()) put(rows.getString(0), rows.getInt(1) to rows.getString(2))
-            } }
         val senses = text("translation").lineSequence().filter { it.isNotBlank() }.map { line ->
             val id = MessageDigest.getInstance("SHA-256").digest((word + "\n" + line).toByteArray(Charsets.UTF_8))
                 .take(12).joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 255) }
-            Sense(id, line, stats[id]?.first, stats[id]?.second)
+            Sense(id, line)
         }.toList()
-        return editorial.apply(WordEntry(word, text("phonetic"), senses, text("definition"),
-            text("tags").split(' ').filter { it.isNotBlank() }.toSet(), text("exchange")))
+        return frequencies.apply(editorial.apply(WordEntry(word, text("phonetic"), senses, text("definition"),
+            text("tags").split(' ').filter { it.isNotBlank() }.toSet(), text("exchange"))))
     }
 }

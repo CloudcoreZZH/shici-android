@@ -32,9 +32,10 @@ class AppIntegrationTest {
         compose.onNodeWithText("全部释义").performClick()
         compose.onNodeWithText("展开维基补充释义", substring = true).performScrollTo().performClick()
         compose.onNodeWithText("hospital · 原词条").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("名词 · 醫院").assertExists()
+        compose.onNodeWithText("名词 · 醫院").performScrollTo().assertIsDisplayed()
         screenshot("dictionary-reference-real")
-        compose.onNodeWithText("NETEM 2024 参考词表收录 · 非 2027 大纲").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("NETEM 2024 参考词表收录 · 非 2027 大纲"))
+        compose.onNodeWithText("NETEM 2024 参考词表收录 · 非 2027 大纲").assertIsDisplayed()
     }
 
     @Test fun `real lookup two additions and one completed learning task`() {
@@ -53,7 +54,7 @@ class AppIntegrationTest {
         compose.onNodeWithText("再次加入词书 +1").performClick()
         awaitText("考研生词本 · 已加入 2 次")
         compose.onNodeWithText("去学习").performClick()
-        awaitText("累计加入 2 次 · 本组学习")
+        awaitText("累计加入 2 次")
         screenshot("learning-question-real")
         compose.onNodeWithText("显示答案").performClick()
         compose.onNodeWithText("记得").performClick()
@@ -67,7 +68,7 @@ class AppIntegrationTest {
         compose.onNodeWithText("先到这里").performClick()
         compose.onNodeWithText("词书").performClick()
         awaitText("待学习 1 次")
-        compose.onNodeWithText("2 次").assertIsDisplayed()
+        compose.onNodeWithText("加入 2 次").assertIsDisplayed()
         screenshot("wordbook-real")
         compose.onNodeWithText("学习").performClick()
         awaitText("把见过的词，记住。")

@@ -1,13 +1,12 @@
 package io.github.shici.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.*
@@ -15,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.shici.core.SessionMode
@@ -47,116 +45,97 @@ import java.util.Locale
         dismissButton = { TextButton({ creating = false }) { Text("取消") } })
 }
 
+
 @Composable fun HomeScreen(state: AppState, chooseBook: (Long) -> Unit, createBook: (String) -> Unit,
                           learn: () -> Unit, review: () -> Unit, search: () -> Unit) {
     val pending = state.snapshot?.pendingCount ?: 0
     val due = state.dueWords.size
-    val resumeLearn = state.savedSessions[SessionMode.LEARN]
-    val learningWaits = resumeLearn?.items?.all { it.availableAt.isAfter(state.now) } == true
-    val hasWords = state.snapshot?.words?.isNotEmpty() == true
+    val resume = state.savedSessions[SessionMode.LEARN]
+    val waiting = resume?.items?.all { it.availableAt.isAfter(state.now) } == true
+    val date = remember(state.now) { state.now.atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA)) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        Spacer(Modifier.height(4.dp))
+        verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("拾词", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                QuietText(state.now.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("M月d日 · EEEE", Locale.CHINA)))
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(2.dp).height(46.dp).background(MaterialTheme.colorScheme.primary))
+                Text("拾词", Modifier.padding(start = 14.dp), fontSize = 42.sp, lineHeight = 52.sp)
             }
-            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Text("离线 · 专注", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary)
-            }
+            QuietText(date)
         }
         BookPicker(state.books, state.snapshot?.book, chooseBook, createBook)
-        Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(if (due > 0) "先巩固，再向前。" else if (learningWaits) "今天先到这里。" else if (pending > 0) "把见过的词，记住。"
-                    else if (hasWords) "今天的任务，完成了。" else "从一个生词开始。",
-                    fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text(when {
-                    due > 0 -> "有 $due 个词到了复习时间。反复加入的词会先出现。"
-                    learningWaits -> "这一组正在等待巩固，${dueLabel(state.now, resumeLearn!!.items.minOf { it.availableAt })}可继续。已完成的记录都已保存。"
-                    resumeLearn != null -> "上次已完成 ${resumeLearn.completed} / ${resumeLearn.total}，随时接着学。"
-                    pending > 0 -> "还有 $pending 次学习任务。每组最多 ${state.groupSize} 个词，专注眼前这一组。"
-                    hasWords -> "此刻没有新任务。到期时，复习会在这里等你。"
-                    else -> "查到不熟悉的单词，放进词书。下一次遇见它，试着自己想起来。"
-                }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                AccentButton(when {
-                    due > 0 -> "开始复习"
-                    learningWaits -> "查看学习安排"
-                    resumeLearn != null -> "继续学习"
-                    pending > 0 -> "开始学习"
-                    else -> "去查词"
-                }, when { due > 0 -> review; pending > 0 -> learn; else -> search }, Modifier.fillMaxWidth())
-            }
+        HorizontalDivider()
+        QuietText("一个词，更大的世界。")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TaskNumber("待学习", pending, learn, Modifier.weight(1f))
+            VerticalDivider(Modifier.height(76.dp))
+            TaskNumber("到期复习", due, review, Modifier.weight(1f).padding(start = 28.dp))
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TaskTile("待学习", pending, "次任务", learn, Modifier.weight(1f))
-            TaskTile("到期复习", due, "个单词", review, Modifier.weight(1f))
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(when { due > 0 -> "先巩固，再向前。"; waiting -> "给记忆一点间隔。"
+                pending > 0 -> "把见过的词，记住。"; else -> "从一个生词开始。" }, style = MaterialTheme.typography.titleMedium)
+            if (waiting) QuietText("${dueLabel(state.now, resume!!.items.minOf { it.availableAt })}可继续巩固，进度已保存。")
+            else if (resume != null) QuietText("本组已完成 ${resume.completed} / ${resume.total}，接着上次继续。")
+            AccentButton(when { due > 0 -> "开始复习  →"; waiting -> "查看学习安排"; resume != null -> "继续学习"
+                pending > 0 -> "开始学习"; else -> "去查词" },
+                when { due > 0 -> review; pending > 0 || resume != null -> learn; else -> search }, Modifier.fillMaxWidth())
         }
-        if (state.snapshot?.words?.any { it.pendingCount == 0 && it.memory != null } == true) ReviewCalendar(state)
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("今天的积累", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    SmallMetric("完成学习", "${state.snapshot?.completedToday ?: 0} 次")
-                    SmallMetric("完成复习", "${state.snapshot?.reviewedToday ?: 0} 次")
-                    SmallMetric("词书收录", "${state.snapshot?.words?.size ?: 0} 词")
-                }
-            }
-            state.nextReviewAt?.let { QuietText("下一次复习 · ${dueLabel(state.now, it)}") }
-            QuietText("每次加入都再学一次 · 同组不连续刷同一个词")
+        HorizontalDivider()
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            SmallMetric("今日已学", "${state.snapshot?.completedToday ?: 0}")
+            SmallMetric("今日复习", "${state.snapshot?.reviewedToday ?: 0}")
+            SmallMetric("词书收录", "${state.snapshot?.words?.size ?: 0}")
         }
-        Spacer(Modifier.height(12.dp))
+        ReviewCalendar(state)
+        state.nextReviewAt?.let { QuietText("下一次复习 · ${dueLabel(state.now, it)}") }
+        QuietText("每次加入，都再学一次。")
+        Spacer(Modifier.height(8.dp))
     }
 }
 
-@Composable private fun ReviewCalendar(state: AppState) {
+@Composable internal fun ReviewCalendar(state: AppState) {
     val zone = ZoneId.systemDefault()
     val today = state.now.atZone(zone).toLocalDate()
-    val scheduled = remember(state.snapshot, today, zone) {
+    val scheduled = remember(state.snapshot?.words, today, zone) {
         state.snapshot?.words.orEmpty().filter { it.pendingCount == 0 && it.memory != null }
             .groupingBy { it.memory!!.dueAt.atZone(zone).toLocalDate().coerceAtLeast(today) }.eachCount()
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("复习日历", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            QuietText("未来 7 天")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("复习日历", style = MaterialTheme.typography.titleMedium)
+            QuietText("未来 7 天 · 预计")
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items((0L..6L).map(today::plusDays), key = { it.toEpochDay() }) { day ->
-                val isToday = day == today
-                Surface(shape = RoundedCornerShape(18.dp),
-                    color = if (isToday) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow) {
-                    Column(Modifier.widthIn(min = 44.dp).padding(horizontal = 9.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuietText(if (isToday) "今天" else day.format(DateTimeFormatter.ofPattern("EEE", Locale.CHINA)))
-                        Text(day.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("${scheduled[day] ?: 0} 词", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        Row(Modifier.fillMaxWidth()) {
+            repeat(7) { index ->
+                val day = today.plusDays(index.toLong())
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuietText(if (index == 0) "今天" else listOf("一", "二", "三", "四", "五", "六", "日")[day.dayOfWeek.value - 1])
+                    Surface(shape = CircleShape, color = if (index == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface) {
+                        Box(Modifier.sizeIn(minWidth = 34.dp, minHeight = 34.dp), contentAlignment = Alignment.Center) {
+                            Text(day.dayOfMonth.toString(), fontFamily = BookSerif,
+                                color = if (index == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                        }
                     }
+                    QuietText("${scheduled[day] ?: 0}")
                 }
             }
         }
-        QuietText("日期按已学记录预计，会随之后的答题调整。")
+        QuietText("数字为预计复习词数，随答题调整。")
     }
 }
 
-@Composable private fun TaskTile(title: String, count: Int, unit: String, click: () -> Unit, modifier: Modifier) {
-    OutlinedCard(click, modifier = modifier, shape = RoundedCornerShape(22.dp)) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(count.toString(), fontSize = 38.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                QuietText(unit)
-                Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-            }
-        }
+@Composable private fun TaskNumber(label: String, count: Int, click: () -> Unit, modifier: Modifier) {
+    Column(modifier.clickable(onClickLabel = label, onClick = click).padding(vertical = 8.dp)) {
+        Text(count.toString(), fontFamily = BookSerif, fontSize = 60.sp, lineHeight = 68.sp)
+        Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
 @Composable internal fun SmallMetric(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(value, fontFamily = BookSerif, fontSize = 28.sp)
         QuietText(label)
     }
 }

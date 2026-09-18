@@ -47,7 +47,7 @@ class StudyProgressTest {
         val editorial = listOf(Sense("e", "v. 处理"))
         val entry = WordEntry("address", "", original, editorialSenses = editorial)
         assertFalse(entry.hasExamStatistics)
-        assertEquals(editorial, entry.learningSenses())
+        assertEquals(original, entry.learningSenses())
         assertEquals(original, entry.senses)
     }
 }

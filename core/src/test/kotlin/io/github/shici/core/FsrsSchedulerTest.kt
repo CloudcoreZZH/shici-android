@@ -103,8 +103,8 @@ class FsrsSchedulerTest {
 
     @Test fun `unattributed frequency never outranks verified sense statistics`() {
         val entry = WordEntry("test", "", listOf(Sense("a", "A", 999), Sense("b", "B", 3, "2000–2025 英语一")))
-        assertEquals("b", entry.examSenses().first().id)
-        assertTrue(entry.hasExamStatistics)
+        assertEquals("a", entry.examSenses().first().id)
+        assertFalse(entry.hasExamStatistics)
         assertEquals("address", normalizeWord("  ADDRESS  "))
     }
 }

@@ -14,6 +14,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.shici.app.audio.Pronunciation
 import io.github.shici.app.ui.*
+import io.github.shici.app.performance.FrameRecorder
+import io.github.shici.app.performance.LocalFrameRecorder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -22,9 +24,11 @@ import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
     private lateinit var pronunciation: Pronunciation
+    private lateinit var frameRecorder: FrameRecorder
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        frameRecorder = FrameRecorder(window)
         pronunciation = Pronunciation(this) { message -> Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
         setContent {
             val model: AppViewModel = viewModel()
@@ -49,10 +53,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
             ShiciTheme(state.appearance) {
-                HighRefreshRateEffect()
-                ShiciApp(state, model, pronunciation::speak)
+                CompositionLocalProvider(LocalFrameRecorder provides frameRecorder) {
+                    ShiciApp(state, model, pronunciation::speak)
+                }
             }
         }
     }
-    override fun onDestroy() { pronunciation.close(); super.onDestroy() }
+    override fun onStop() { frameRecorder.stop(); super.onStop() }
+    override fun onDestroy() { frameRecorder.close(); pronunciation.close(); super.onDestroy() }
 }

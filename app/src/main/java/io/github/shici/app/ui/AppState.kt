@@ -30,6 +30,7 @@ data class AppState(
     val baseDictionarySize: Int = 0,
     val referenceSize: Int = 0,
     val editorialSize: Int = 0,
+    val frequencySize: Int = 0,
     val adding: Boolean = false,
     val session: StudySession? = null,
     val reviewOverview: Boolean = false,
@@ -39,8 +40,8 @@ data class AppState(
     val savedSessions: Map<SessionMode, StudyProgress> = emptyMap(),
     val now: Instant = Instant.now(),
 ) {
-    val dueWords get() = reviewQueue(snapshot?.words.orEmpty(), now)
+    val dueWords by lazy(LazyThreadSafetyMode.NONE) { reviewQueue(snapshot?.words.orEmpty(), now) }
     val canGoBack get() = detail != null || session != null || reviewOverview
-    val nextReviewAt get() = snapshot?.words.orEmpty().filter { it.pendingCount == 0 }
-        .mapNotNull { it.memory?.dueAt }.filter { it.isAfter(now) }.minOrNull()
+    val nextReviewAt by lazy(LazyThreadSafetyMode.NONE) { snapshot?.words.orEmpty().asSequence().filter { it.pendingCount == 0 }
+        .mapNotNull { it.memory?.dueAt }.filter { it.isAfter(now) }.minOrNull() }
 }

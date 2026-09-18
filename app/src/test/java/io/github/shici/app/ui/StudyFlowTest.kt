@@ -76,7 +76,7 @@ class StudyFlowTest {
     @Test fun `dictionary explains missing exam statistics instead of fabricating frequency`() {
         var added = 0
         compose.setContent { TestTheme(Appearance.LIGHT) { DictionaryScreen(entry, 3, "考研生词本", {}, {}, { added++ }) } }
-        compose.onNodeWithText("本词暂无编辑优先级，以下按词典原顺序展示。").assertExists()
+        compose.onNodeWithText("考研义项频率 · 未统计").assertExists()
         screenshot("dictionary")
         compose.onNodeWithText("再次加入词书 +1").performClick()
         assertEquals(1, added)
@@ -155,16 +155,42 @@ class StudyFlowTest {
         compose.onNodeWithText("显示答案").assertIsDisplayed()
     }
 
-    @Test fun `Android sixteen requests 120 Hz on the Compose view and restores its previous vote`() {
-        val enabled = mutableStateOf(true)
-        var root: android.view.View? = null
-        compose.setContent {
-            val view = LocalView.current
-            SideEffect { root = view }
-            if (enabled.value) HighRefreshRateEffect()
-        }
-        compose.runOnIdle { assertEquals(120f, root!!.requestedFrameRate, 0f); enabled.value = false }
-        compose.runOnIdle { assertNotEquals(120f, root!!.requestedFrameRate) }
+    @Test fun `revealing does not move the word heading or change the content viewport`() {
+        val page = mutableStateOf(state(false))
+        compose.setContent { TestTheme(Appearance.LIGHT) {
+            StudyScreen(page.value, {}, {}, { page.value = page.value.copy(session = page.value.session!!.copy(revealed = true)) }, {})
+        } }
+        val before = compose.onNodeWithText("address").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("显示答案").performClick()
+        val after = compose.onNodeWithText("address").fetchSemanticsNode().boundsInRoot
+        assertEquals(before, after)
+        Rating.entries.forEach { compose.onNodeWithText(it.label).assertIsDisplayed() }
+    }
+
+    @Test fun `long dictionary composes only visible senses and can reach the final definition`() {
+        val long = entry.copy(senses = (1..250).map { Sense("long:$it", "义项 $it 的完整中文释义") })
+        compose.setContent { TestTheme(Appearance.LIGHT) { DictionaryScreen(long, 0, "考研生词本", {}, {}, {}) } }
+        compose.onNodeWithText("义项 250 的完整中文释义").assertDoesNotExist()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("义项 250 的完整中文释义"))
+        compose.onNodeWithText("义项 250 的完整中文释义").assertIsDisplayed()
+        compose.onNodeWithText("加入词书 +1").assertIsDisplayed()
+    }
+
+    @Test fun `verified test evidence displays corpus scope counts unknowns and original definitions`() {
+        val corpus = ExamCorpus("test", "TEST ONLY", "英语（一）",
+            listOf(ExamPaper("p", 2020, "https://example.org/test-only")), "https://example.org/method", "TEST ONLY")
+        val stats = ExamStatistics(corpus, listOf(
+            CountedSense("missing", "待统计义项", null),
+            CountedSense("counted", "测试用已标注意项", listOf(ExamOccurrence("p", "reading token 1", "test reviewer")), "test reviewer")))
+        compose.setContent { TestTheme(Appearance.LIGHT) { DictionaryScreen(entry.copy(examStatistics = stats), 0, "考研生词本", {}, {}, {}) } }
+        compose.onNodeWithText("英语（一） · 2020—2020 · 1 份试卷", substring = true).assertExists()
+        compose.onNodeWithText("真题出现 1 次").assertIsDisplayed()
+        compose.onNodeWithText("未统计").assertExists()
+        compose.onNodeWithText("核对逐次出处").performClick()
+        compose.onNodeWithText("2020 · reading token 1", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.onNodeWithText("全部释义").performClick()
+        compose.onNodeWithText("v. 处理；设法解决").assertIsDisplayed()
     }
 
     private fun screenshot(name: String) {

@@ -1,6 +1,8 @@
 package io.github.shici.app.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -21,20 +23,21 @@ import java.time.format.DateTimeFormatter
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
-    val words = state.snapshot?.words.orEmpty().filter { word ->
-        word.word.contains(query.trim(), ignoreCase = true) && when (filter) {
+    val words = remember(state.snapshot?.words, query, filter, state.now, state.meanings) { state.snapshot?.words.orEmpty().filter { word ->
+        (word.word.contains(query.trim(), ignoreCase = true) || state.meanings[word.word].orEmpty().contains(query.trim())) && when (filter) {
             1 -> word.pendingCount > 0
             2 -> word.isDue(state.now)
             else -> true
         }
     }
+    }
     Column(Modifier.fillMaxSize()) {
         BookPicker(state.books, state.snapshot?.book, choose, create)
-        Text("我的词书", Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.headlineLarge)
+        BookTitle("我的词书", "${state.snapshot?.pendingCount ?: 0} 次待学任务", Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
         QuietText("${state.snapshot?.words?.size ?: 0} 词 · 累计加入 ${state.snapshot?.totalAdditions ?: 0} 次",
             Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         OutlinedTextField(query, { query = it.take(100) }, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-            singleLine = true, placeholder = { Text("搜索词书") })
+            singleLine = true, placeholder = { Text("搜索单词或中文释义") })
         FlowRow(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("全部", "待学习", "待复习").forEachIndexed { index, title -> FilterChip(filter == index, { filter = index }, label = { Text(title) }) }
         }
@@ -43,20 +46,21 @@ import java.time.format.DateTimeFormatter
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (words.isEmpty()) item { EmptyState(if (query.isNotBlank()) "没有匹配的单词" else "当前列表为空",
                 if (filter == 2) "还未到期的词会按记忆间隔出现。" else "可以调整筛选，或查词后加入当前词书。") }
-            items(words, key = { it.word }) { word ->
-                Card(onClick = { open(word.word) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            items(words, key = { it.word }, contentType = { "word" }) { word ->
+                Column(Modifier.clickable { open(word.word) }) {
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(word.word, style = MaterialTheme.typography.titleLarge)
+                            Text(word.word, fontFamily = BookSerif, fontSize = 26.sp)
                             Text(state.meanings[word.word].orEmpty(), maxLines = 2, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyMedium)
                             if (word.pendingCount > 0) QuietText("待学习 ${word.pendingCount} 次")
-                            else word.memory?.let { QuietText("下次复习 ${it.dueAt.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))}") }
+                            else word.memory?.let { QuietText("下次复习 · ${dueLabel(state.now, it.dueAt)}") }
                         }
-                        Text("${word.additionCount} 次", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold,
+                        Text("加入 ${word.additionCount} 次", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 8.dp))
                         IconButton({ deleting = word.word }) { Icon(Icons.Outlined.DeleteOutline, "从词书移除 ${word.word}", Modifier.size(20.dp)) }
                     }
+                    HorizontalDivider()
                 }
             }
         }

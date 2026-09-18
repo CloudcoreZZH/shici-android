@@ -33,8 +33,11 @@ def main():
     libraries = {}
     with zipfile.ZipFile(ROOT / APK) as package:
         assert 'assets/dictionary.db' in package.namelist()
-        for required in ['references.db', 'references-source.json', 'WIKTIONARY-LICENSE.txt', 'NETEM-LICENSE.txt']:
+        for required in ['references.db', 'references-source.json', 'WIKTIONARY-LICENSE.txt', 'NETEM-LICENSE.txt', 'exam-frequency.json']:
             assert f'assets/{required}' in package.namelist(), required
+        frequency_catalog = json.loads(package.read('assets/exam-frequency.json'))
+        assert frequency_catalog['schemaVersion'] == 1
+        assert package.read('assets/exam-frequency.json') == (ROOT / 'app/src/main/assets/exam-frequency.json').read_bytes()
         reference_info = json.loads(package.read('assets/references-source.json'))
         assert hashlib.sha256(package.read('assets/references.db')).hexdigest() == reference_info['database_sha256']
         for name in package.namelist():

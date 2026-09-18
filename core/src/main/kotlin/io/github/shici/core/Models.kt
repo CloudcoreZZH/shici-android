@@ -22,21 +22,14 @@ data class WordEntry(
     val exampleTranslation: String = "",
     val references: List<DictionaryReference> = emptyList(),
     val inNetem2024: Boolean = false,
+    val examStatistics: ExamStatistics? = null,
 ) {
-    val hasExamStatistics get() = senses.any { it.examCount != null && !it.examSource.isNullOrBlank() }
-    fun examSenses(): List<Sense> = senses.sortedWith(
-        compareByDescending<Sense> { if (it.examSource.isNullOrBlank()) null else it.examCount }
-    )
-    fun learningSenses(): List<Sense> = when {
-        hasExamStatistics -> examSenses()
-        editorialSenses.isNotEmpty() -> editorialSenses
-        else -> senses
-    }
-    val senseLabel get() = when {
-        hasExamStatistics -> "考研义项统计"
-        editorialSenses.isNotEmpty() -> "考研释义优先级"
-        else -> "完整词典释义"
-    }
+    val hasExamStatistics get() = examStatistics != null
+    fun examSenses(): List<Sense> = examStatistics?.let { statistics -> statistics.ranked.map {
+        Sense(it.id, it.text, it.count, if (it.count != null) statistics.corpus.scope else null)
+    } } ?: senses
+    fun learningSenses(): List<Sense> = examSenses()
+    val senseLabel get() = if (hasExamStatistics) "考研义项频率" else "考研义项频率 · 未统计"
 }
 
 enum class Rating(val value: Int, val label: String) {

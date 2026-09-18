@@ -32,10 +32,11 @@ class DictionaryStoreTest {
         val entry = dictionary.find("address")!!
         assertTrue(entry.references.isEmpty())
         assertTrue(entry.editorialSenses.isNotEmpty())
-        assertEquals(entry.editorialSenses, entry.learningSenses())
+        assertEquals(entry.senses, entry.learningSenses())
         assertTrue(entry.inNetem2024)
         assertFalse(entry.hasExamStatistics)
         assertTrue(entry.senses.all { it.examCount == null && it.examSource == null })
+        assertEquals(0, dictionary.frequencySize)
     }
 
     @Test fun `new reference words can be searched and learned with honest source`() {

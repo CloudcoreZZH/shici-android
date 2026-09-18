@@ -1,0 +1,42 @@
+{
+  "generator": "built-in image_gen",
+  "status": "complete",
+  "selected": "A-墨白书页.png",
+  "images": [
+    {
+      "file": "A-墨白书页.png",
+      "width": 1086,
+      "height": 1448,
+      "bytes": 1324287,
+      "sha256": "225ebc3ad8e9dd519fc613c08ff9a22f4cf1b04ffd3c0cc0177f83d1ab49610c"
+    },
+    {
+      "file": "B-原生晴空.png",
+      "width": 1086,
+      "height": 1448,
+      "bytes": 1479213,
+      "sha256": "e695bc38e3ec2dbfa8650a9cd0d63d7825b663625f7f59dfbc581b8376d3a1a4"
+    },
+    {
+      "file": "C-山间留白.png",
+      "width": 1086,
+      "height": 1448,
+      "bytes": 1355085,
+      "sha256": "b048a6f634d5ff0981f7993ac11b114710e167196cabf7976827298fd1c0571f"
+    },
+    {
+      "file": "D-夜航专注.png",
+      "width": 1086,
+      "height": 1448,
+      "bytes": 1533275,
+      "sha256": "321b7bcd5f11efed552fe2bc5f0e88ff294da82c1c8f3338546fd7e16ddd8e66"
+    },
+    {
+      "file": "E-瑞士索引.png",
+      "width": 1086,
+      "height": 1448,
+      "bytes": 1294175,
+      "sha256": "b830419dd41f63c1ab65bf01787bc09e42c7800ddc926f2bf775b953bcb39a49"
+    }
+  ]
+}

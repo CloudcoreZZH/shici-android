@@ -16,31 +16,6 @@ import io.github.shici.core.WordEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-@Composable internal fun DictionaryReferences(entry: WordEntry) {
-    var expanded by rememberSaveable(entry.word) { mutableStateOf(false) }
-    val uri = LocalUriHandler.current
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        HorizontalDivider()
-        if (entry.source == "ECDICT") {
-            TextButton(onClick = { expanded = !expanded }) {
-                Text(if (expanded) "收起补充释义" else "展开维基补充释义 · ${entry.references.sumOf { it.senses.size }} 条")
-            }
-        }
-        QuietText("中文维基词典 · 社区编写，未逐条专业审校。保留原文简繁体与用法标签，顺序不表示考研频率。")
-        AnimatedVisibility(expanded || entry.source != "ECDICT") {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                entry.references.forEach { reference ->
-                    Text("${reference.headword} · 原词条", style = MaterialTheme.typography.titleSmall)
-                    if (entry.source == "ECDICT") reference.senses.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                    TextButton(onClick = { uri.openUri(reference.url) }) { Text("查看 ${reference.headword} 的原词条与作者记录 ↗") }
-                }
-                QuietText("中文维基词典贡献者 · Kaikki.org / Wiktextract 抽取\nCC BY-SA 4.0 · 已过滤、去重及标注词性，未改写释义。")
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-    }
-}
-
 /** License text ships in the APK and remains readable without a browser or connectivity. */
 @Composable internal fun DataLicenses() {
     val context = LocalContext.current

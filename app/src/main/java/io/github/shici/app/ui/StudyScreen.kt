@@ -1,16 +1,16 @@
 package io.github.shici.app.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Undo
@@ -21,10 +21,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.shici.core.*
+
+private data class StudyPage(val entry: WordEntry, val key: String, val revealed: Boolean, val count: Int)
 
 @Composable fun StudyScreen(state: AppState, speak: (String) -> Unit, back: () -> Unit,
                            reveal: () -> Unit, answer: (Rating) -> Unit, undo: () -> Unit = {}, next: () -> Unit = {}, other: () -> Unit = {}) {
@@ -33,150 +38,139 @@ import io.github.shici.core.*
     val waiting = session.current?.availableAt?.isAfter(state.now) == true
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(if (session.mode == SessionMode.LEARN) "学习" else "复习", back) {
+            Text("${progress.completed} / ${progress.total}", Modifier.padding(horizontal = 12.dp),
+                style = MaterialTheme.typography.labelLarge, fontFamily = BookSerif)
             if (progress.lastActionId != null) IconButton(undo, enabled = !session.saving) {
                 Icon(Icons.AutoMirrored.Outlined.Undo, "撤销上一条")
-            }
-            Text("${progress.completed} / ${progress.total}", Modifier.padding(end = 20.dp),
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else Spacer(Modifier.width(8.dp))
         }
         val animatedProgress = animateFloatAsState(progress.completed.toFloat() / progress.total.coerceAtLeast(1),
             animationSpec = Motion.enter(), label = "study-progress")
         LinearProgressIndicator(progress = { animatedProgress.value },
             trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).height(2.dp))
         when {
             session.finished -> StudyResult(state, back, next)
             waiting -> WaitingCard(state, back, other)
             else -> {
                 val entry = session.entry ?: return
-                AnimatedContent(state, modifier = Modifier.weight(1f),
-                    contentKey = { it.session?.current?.let { card -> card.taskId ?: card.word } },
-                    transitionSpec = { ((fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { it / 24 }) togetherWith
-                        fadeOut(Motion.exit())).using(null) }, label = "study-word") { page ->
-                    page.session?.entry?.let { StudyContent(page, it, speak, Modifier.fillMaxSize()) }
+                val count = remember(state.snapshot?.words, entry.word) {
+                    state.snapshot?.words?.find { it.word == entry.word }?.additionCount ?: 1
                 }
-                Surface(color = MaterialTheme.colorScheme.surface) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (!session.revealed) {
-                            AccentButton("显示答案", reveal, Modifier.fillMaxWidth(), !session.saving)
-                            QuietText("先回忆，再确认", Modifier.align(Alignment.CenterHorizontally))
-                        } else {
-                            Text("刚才回想得怎么样？", style = MaterialTheme.typography.labelLarge)
-                            RatingButtons(state, answer)
-                            QuietText(if (session.mode == SessionMode.LEARN) "忘记仍会保留任务 · 按天安排下次巩固" else "按真实回忆评分 · 最短次日复习")
-                        }
-                    }
-                }
+                val page = StudyPage(entry, session.current?.taskId ?: entry.word, session.revealed, count)
+                AnimatedContent(page, modifier = Modifier.weight(1f), contentKey = { it.key },
+                    transitionSpec = { (fadeIn(Motion.pageEnter()) togetherWith fadeOut(Motion.exit())).using(null) },
+                    label = "study-word") { content -> StudyContent(content, speak) }
+                StudyDock(state, reveal, answer)
             }
         }
     }
 }
 
-@Composable private fun StudyContent(state: AppState, entry: WordEntry, speak: (String) -> Unit, modifier: Modifier) {
-    val session = state.session!!
-    val count = state.snapshot?.words?.find { it.word == entry.word }?.additionCount ?: 1
-    val caption = "累计加入 $count 次 · ${if (session.mode == SessionMode.LEARN) "本组学习" else "到期复习"}"
-    val scroll = rememberScrollState()
-    LaunchedEffect(session.progress.answers, session.current) { scroll.scrollTo(0) }
-    BoxWithConstraints(modifier.fillMaxWidth()) {
+@Composable private fun StudyContent(page: StudyPage, speak: (String) -> Unit) {
+    var expanded by rememberSaveable(page.key) { mutableStateOf(false) }
+    val senses = remember(page.entry) { page.entry.learningSenses() }
+    // Reveal changes content once; subsequent frames only change opacity, not size or composition.
+    val revealAlpha = remember(page.key) { Animatable(if (page.revealed) 1f else 0f) }
+    LaunchedEffect(page.revealed) {
+        if (page.revealed) revealAlpha.animateTo(1f, Motion.enter()) else revealAlpha.snapTo(0f)
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth >= 600.dp) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column(Modifier.weight(0.42f).fillMaxHeight().verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    QuietText(caption)
-                    Spacer(Modifier.height(16.dp))
-                    WordHeading(entry, speak, centered = true)
+            Row(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                LazyColumn(Modifier.weight(0.42f).fillMaxHeight(), contentPadding = PaddingValues(vertical = 16.dp)) {
+                    item { WordHeading(page.entry, speak); QuietText("累计加入 ${page.count} 次") }
                 }
-                Column(Modifier.weight(0.58f).fillMaxHeight().verticalScroll(scroll)) {
-                    AnswerReveal(session.revealed, entry)
+                LazyColumn(Modifier.weight(0.58f).fillMaxHeight(), contentPadding = PaddingValues(vertical = 12.dp)) {
+                    studyAnswer(page, senses, expanded, { expanded = !expanded }, Modifier.graphicsLayer { alpha = revealAlpha.value })
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(24.dp))
-                QuietText(caption)
-                Spacer(Modifier.height(24.dp))
-                WordHeading(entry, speak, centered = true)
-                Spacer(Modifier.height(24.dp))
-                AnswerReveal(session.revealed, entry)
-                Spacer(Modifier.height(24.dp))
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp)) {
+                item("word", "heading") {
+                    WordHeading(page.entry, speak)
+                    QuietText("累计加入 ${page.count} 次", Modifier.padding(top = 4.dp, bottom = 24.dp))
+                }
+                studyAnswer(page, senses, expanded, { expanded = !expanded }, Modifier.graphicsLayer { alpha = revealAlpha.value })
             }
         }
     }
 }
 
-@Composable private fun AnswerReveal(revealed: Boolean, entry: WordEntry) {
-    AnimatedContent(revealed,
-        transitionSpec = { ((fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { it / 30 }) togetherWith
-            fadeOut(Motion.exit())).using(null) }, label = "answer-reveal") { shown ->
-        if (shown) MeaningCard(entry) else RecallPrompt()
-    }
-}
-
-@Composable private fun RecallPrompt() {
-    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("先在心里说出释义", style = MaterialTheme.typography.titleMedium)
-            QuietText("想不起来也没关系，揭晓后如实选择。")
+private fun LazyListScope.studyAnswer(page: StudyPage, senses: List<Sense>, expanded: Boolean,
+                                     toggle: () -> Unit, revealModifier: Modifier) {
+    if (!page.revealed) item("prompt", "prompt") {
+        Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            HorizontalDivider(Modifier.width(32.dp))
+            Text("回忆它的含义", style = MaterialTheme.typography.headlineSmall)
+            QuietText("先在心里说出释义，再显示答案。")
         }
-    }
-}
-
-@Composable private fun MeaningCard(entry: WordEntry) {
-    var expanded by rememberSaveable(entry.word) { mutableStateOf(false) }
-    val senses = entry.learningSenses()
-    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(entry.senseLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            (if (expanded) senses else senses.take(3)).forEach { Text(it.text, style = MaterialTheme.typography.bodyLarge) }
-            if (senses.size > 3) TextButton({ expanded = !expanded }) { Text(if (expanded) "收起释义" else "展开其余 ${senses.size - 3} 条释义") }
-            if (entry.editorialSenses.isNotEmpty()) QuietText("编辑整理 · 非频率统计")
-            if (entry.example.isNotBlank()) {
+    } else {
+        items(if (expanded) senses else senses.take(3), key = { "sense:${it.id}" }, contentType = { "sense" }) { sense ->
+            Column(revealModifier.padding(bottom = 12.dp)) {
+                Text(sense.text, style = MaterialTheme.typography.bodyLarge)
+                if (page.entry.hasExamStatistics) QuietText(sense.examCount?.let { "真题出现 $it 次" } ?: "未统计")
+            }
+        }
+        item("source", "note") {
+            if (senses.size > 3) TextButton(toggle) { Text(if (expanded) "收起释义" else "展开其余 ${senses.size - 3} 条释义") }
+            QuietText(page.entry.senseLabel)
+            page.entry.examStatistics?.let { QuietText(it.corpus.scope) }
+        }
+        if (page.entry.example.isNotBlank()) item("example", "example") {
+            Column(revealModifier.padding(top = 20.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 HorizontalDivider()
-                Text(entry.example, style = MaterialTheme.typography.bodyLarge)
-                Text(entry.exampleTranslation, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(page.entry.example, fontFamily = BookSerif, fontSize = 21.sp, lineHeight = 29.sp)
+                Text(page.entry.exampleTranslation, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 QuietText("原创用法例句 · 非真题")
             }
         }
     }
 }
 
-@Composable private fun RatingButtons(state: AppState, answer: (Rating) -> Unit) {
+/** Reserve the same dock bounds on both sides of a reveal. No page-wide height animation. */
+@Composable private fun StudyDock(state: AppState, reveal: () -> Unit, answer: (Rating) -> Unit) {
     val session = state.session ?: return
-    val memory = state.snapshot?.words?.find { it.word == session.current?.word }?.memory
+    val memory = remember(state.snapshot?.words, session.current?.word) {
+        state.snapshot?.words?.find { it.word == session.current?.word }?.memory
+    }
     val intervals = remember(memory, state.retention, state.now) {
+        val scheduler = FsrsScheduler(state.retention)
         Rating.entries.associateWith { rating -> runCatching {
-            intervalLabel(state.now, FsrsScheduler(state.retention).review(memory, rating, state.now).dueAt)
+            intervalLabel(state.now, scheduler.review(memory, rating, state.now).dueAt)
         }.getOrNull() }
     }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= 560.dp) 4 else 2
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Rating.entries.chunked(columns).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { rating ->
-                        val description = when (rating) {
-                            Rating.AGAIN -> "没想起"; Rating.HARD -> "费力想起"; Rating.GOOD -> "正确想起"; Rating.EASY -> "立刻想起"
-                        }
-                        val colors = when (rating) {
-                            Rating.GOOD -> ButtonDefaults.buttonColors()
-                            Rating.AGAIN -> ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer)
-                            Rating.HARD -> ButtonDefaults.filledTonalButtonColors()
-                            Rating.EASY -> ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
-                        }
-                        FilledTonalButton({ answer(rating) }, modifier = Modifier.weight(1f).heightIn(min = 62.dp),
-                            enabled = !session.saving && intervals[rating] != null, shape = RoundedCornerShape(16.dp), colors = colors,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(rating.label, style = MaterialTheme.typography.labelLarge)
-                                Text("$description · ${intervals[rating] ?: "检查时间"}", style = MaterialTheme.typography.labelSmall,
-                                    textAlign = TextAlign.Center)
+    val fontScale = LocalDensity.current.fontScale
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            HorizontalDivider()
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
+                val columns = if (maxWidth >= 560.dp) 4 else 2
+                val buttonHeight = 66.dp + (32 * (fontScale - 1).coerceAtLeast(0f)).dp
+                val height = buttonHeight * (4 / columns) + if (columns == 2) 10.dp else 0.dp
+                Box(Modifier.fillMaxWidth().height(height), contentAlignment = Alignment.BottomCenter) {
+                    if (!session.revealed) AccentButton("显示答案", reveal, Modifier.fillMaxWidth(), !session.saving)
+                    else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Rating.entries.chunked(columns).forEach { ratings ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                ratings.forEach { rating ->
+                                    val scheme = MaterialTheme.colorScheme
+                                    val container = when (rating) {
+                                        Rating.AGAIN -> scheme.errorContainer
+                                        Rating.HARD -> scheme.surfaceContainer
+                                        Rating.GOOD -> scheme.secondaryContainer
+                                        Rating.EASY -> scheme.secondaryContainer.copy(alpha = 0.65f)
+                                    }
+                                    FilledTonalButton({ answer(rating) }, Modifier.weight(1f).height(buttonHeight),
+                                        enabled = !session.saving && intervals[rating] != null, shape = MaterialTheme.shapes.small,
+                                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = container, contentColor = scheme.onSurface),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(rating.label, style = MaterialTheme.typography.labelLarge)
+                                            Text(intervals[rating] ?: "检查时间", style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -194,7 +188,7 @@ import io.github.shici.core.*
         Spacer(Modifier.height(24.dp))
         Icon(Icons.Outlined.Schedule, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
         Text("给记忆一点间隔", style = MaterialTheme.typography.headlineMedium)
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+        Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.primaryContainer) {
             Text(dueLabel(state.now, due), Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
         }
@@ -218,7 +212,7 @@ import io.github.shici.core.*
         Icon(Icons.Outlined.CheckCircleOutline, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Text("这一组，完成了", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
         Text("已保存 ${progress.completed} 次${if (progress.mode == SessionMode.LEARN) "学习" else "复习"}", style = MaterialTheme.typography.titleMedium)
-        Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
             Row(Modifier.fillMaxWidth().padding(22.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 SmallMetric("正确回忆", "${progress.answers - progress.forgotten} 次")
                 SmallMetric("未能回忆", "${progress.forgotten} 次")

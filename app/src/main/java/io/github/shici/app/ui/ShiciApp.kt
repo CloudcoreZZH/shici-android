@@ -5,10 +5,7 @@ import androidx.activity.BackEventCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,10 +20,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.shici.core.SessionMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -35,10 +32,11 @@ import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable fun ShiciApp(state: AppState, model: AppViewModel, speak: (String) -> Unit) {
     val snackbars = remember { SnackbarHostState() }
     val backProgress = remember { Animatable(0f) }
+    val backShape = remember { RoundedCornerShape(8.dp) }
     var backDirection by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(model) { for (message in model.messages) snackbars.showSnackbar(message) }
     val waitingUntil = state.session?.current?.availableAt
@@ -58,37 +56,35 @@ import java.time.Instant
         }
         finally { withContext(NonCancellable) { backProgress.snapTo(0f) } }
     }
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(Modifier.fillMaxSize().preferredFrameRate(120f).background(MaterialTheme.colorScheme.background)) {
         Scaffold(containerColor = Color.Transparent, contentWindowInsets = WindowInsets.safeDrawing,
             snackbarHost = { SnackbarHost(snackbars) },
             bottomBar = {
                 if (state.session == null && !state.reviewOverview && state.detail == null && !state.loading) {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+                    Column {
+                    HorizontalDivider()
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                         val icons = listOf(Icons.Outlined.Search, Icons.AutoMirrored.Outlined.MenuBook, Icons.AutoMirrored.Outlined.LibraryBooks, Icons.Outlined.PersonOutline)
                         Tab.entries.forEachIndexed { index, tab ->
                             NavigationBarItem(state.tab == tab, { model.changeTab(tab) },
+                                colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent,
+                                    selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary),
                                 icon = { Icon(icons[index], null) }, label = { Text(tab.label) })
                         }
+                    }
                     }
                 }
             }) { padding ->
             Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding().fillMaxSize().graphicsLayer {
-                scaleX = 1 - backProgress.value * 0.04f; scaleY = 1 - backProgress.value * 0.04f
-                translationX = backProgress.value * 24.dp.toPx() * backDirection
-                shape = RoundedCornerShape((backProgress.value * 24).dp)
+                scaleX = 1 - backProgress.value * 0.018f; scaleY = 1 - backProgress.value * 0.018f
+                translationX = backProgress.value * 16.dp.toPx() * backDirection
+                shape = backShape
                 clip = backProgress.value > 0f
             }, contentAlignment = Alignment.TopCenter) {
                 AnimatedContent(targetState = state, contentKey = ::screenKey,
                     modifier = Modifier.widthIn(max = 840.dp).fillMaxSize(),
                     transitionSpec = {
-                        val direction = when {
-                            screenDepth(targetState) > screenDepth(initialState) -> 1
-                            screenDepth(targetState) < screenDepth(initialState) -> -1
-                            targetState.tab.ordinal > initialState.tab.ordinal -> 1
-                            else -> -1
-                        }
-                        ((fadeIn(Motion.enter()) + slideInHorizontally(Motion.enter()) { direction * it / 18 }) togetherWith
-                            (fadeOut(Motion.exit()) + slideOutHorizontally(Motion.exit()) { -direction * it / 24 }))
+                        (fadeIn(Motion.pageEnter()) togetherWith fadeOut(Motion.exit()))
                             .using(null)
                     },
                     label = "screen") { state ->
@@ -126,10 +122,4 @@ private fun screenKey(state: AppState): String = when {
     state.detail != null -> "word:${state.detail.word}"
     state.reviewOverview -> "review"
     else -> state.tab.name
-}
-
-private fun screenDepth(state: AppState): Int = when {
-    state.session != null -> 2
-    state.detail != null || state.reviewOverview -> 1
-    else -> 0
 }
