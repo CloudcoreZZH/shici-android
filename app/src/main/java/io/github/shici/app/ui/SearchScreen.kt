@@ -16,15 +16,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.shici.core.WordEntry
 
 @Composable fun SearchScreen(state: AppState, search: (String) -> Unit, open: (String) -> Unit) {
+    val focus = LocalFocusManager.current
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("查词")
         OutlinedTextField(state.query, search, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
             placeholder = { Text("输入英文单词") }, singleLine = true, shape = RoundedCornerShape(22.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { state.searchResults.firstOrNull()?.let { focus.clearFocus(); open(it.word) } }),
             leadingIcon = { Icon(Icons.Outlined.Search, null) }, trailingIcon = {
                 if (state.query.isNotEmpty()) IconButton({ search("") }) { Icon(Icons.Outlined.Close, "清空搜索") }
             })
@@ -39,11 +46,11 @@ import io.github.shici.core.WordEntry
         }
         LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.searchResults, key = { it.word }) { entry ->
-                Card(onClick = { open(entry.word) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Card(onClick = { focus.clearFocus(); open(entry.word) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text(entry.word, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(5.dp))
-                        Text(entry.senses.firstOrNull()?.text.orEmpty(), maxLines = 2, style = MaterialTheme.typography.bodyMedium,
+                        Text(entry.learningSenses().firstOrNull()?.text.orEmpty(), maxLines = 2, style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -53,7 +60,7 @@ import io.github.shici.core.WordEntry
 }
 
 @Composable fun DictionaryScreen(entry: WordEntry, count: Int, bookName: String, speak: (String) -> Unit,
-                                back: () -> Unit, add: () -> Unit) {
+                                back: () -> Unit, add: () -> Unit, adding: Boolean = false, learn: () -> Unit = {}) {
     var section by rememberSaveable(entry.word) { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("查词详情", back)
@@ -62,17 +69,21 @@ import io.github.shici.core.WordEntry
             WordHeading(entry, speak)
             if ("ky" in entry.tags) AssistChip(onClick = {}, label = { Text("考研词汇") })
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("考研释义", "全部释义", "词形与英文").forEachIndexed { index, label ->
+                listOf("学习释义", "全部释义", "词形与英文").forEachIndexed { index, label ->
                     FilterChip(section == index, { section = index }, label = { Text(label) })
                 }
             }
             Spacer(Modifier.height(12.dp))
             if (section == 0) {
-                QuietText(if (entry.hasExamStatistics) "按已核验的考研义项频次排序" else "暂无考研义项统计，以下按词典原顺序展示。")
+                QuietText(when {
+                    entry.hasExamStatistics -> "按已核验的考研义项频次排序"
+                    entry.editorialSenses.isNotEmpty() -> "考研释义优先级 · 编辑整理，非频率统计"
+                    else -> "本词暂无编辑优先级，以下按词典原顺序展示。"
+                })
                 Spacer(Modifier.height(12.dp))
             }
             if (section < 2) {
-                val senses = if (section == 0) entry.examSenses() else entry.senses
+                val senses = if (section == 0) entry.learningSenses() else entry.senses
                 senses.forEachIndexed { index, sense ->
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
@@ -87,6 +98,13 @@ import io.github.shici.core.WordEntry
                         }
                     }
                 }
+                if (section == 0 && entry.example.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(entry.example, style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(entry.exampleTranslation, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    QuietText("原创用法例句 · 非真题", Modifier.padding(top = 8.dp))
+                }
             } else {
                 Text("词形变化", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
@@ -97,13 +115,16 @@ import io.github.shici.core.WordEntry
                 Text(entry.english.ifBlank { "词典暂未提供英文释义。" })
             }
             Spacer(Modifier.height(12.dp))
-            QuietText("释义来源：${entry.source} 离线词典")
+            QuietText("完整释义：${entry.source} 离线词典${if (entry.editorialSenses.isNotEmpty()) " · 学习释义：拾词编辑版" else ""}")
             Spacer(Modifier.height(24.dp))
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
-            QuietText("$bookName · 已加入 $count 次")
+            QuietText("$bookName · 已加入 $count 次", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             Spacer(Modifier.height(8.dp))
-            AccentButton(if (count == 0) "加入词书 +1" else "再次加入词书 +1", add, Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AccentButton(if (adding) "正在加入…" else if (count == 0) "加入词书 +1" else "再次加入词书 +1", add, Modifier.weight(1f), !adding)
+                if (count > 0) OutlinedButton(learn, Modifier.heightIn(min = 54.dp)) { Text("去学习") }
+            }
         }
     }
 }

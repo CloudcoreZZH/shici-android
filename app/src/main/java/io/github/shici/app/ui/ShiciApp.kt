@@ -1,6 +1,7 @@
 package io.github.shici.app.ui
 
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.BackEventCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -24,22 +25,34 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.shici.core.SessionMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import java.time.Duration
+import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun ShiciApp(state: AppState, model: AppViewModel, speak: (String) -> Unit) {
     val snackbars = remember { SnackbarHostState() }
     var backProgress by remember { mutableFloatStateOf(0f) }
+    var backDirection by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(model) { for (message in model.messages) snackbars.showSnackbar(message) }
-    PredictiveBackHandler(state.canGoBack && state.additionResult == null) { events ->
-        try { events.collect { backProgress = it.progress }; model.goBack() }
+    val waitingUntil = state.session?.current?.availableAt
+    LaunchedEffect(waitingUntil) {
+        if (waitingUntil != null && waitingUntil.isAfter(state.now)) {
+            delay(Duration.between(Instant.now(), waitingUntil).toMillis().coerceAtLeast(1))
+            model.refresh()
+        }
+    }
+    PredictiveBackHandler(state.canGoBack) { events ->
+        try { events.collect {
+            backProgress = it.progress
+            backDirection = if (it.swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+        }; model.goBack() }
         catch (_: CancellationException) { /* Cancelled gestures restore the current screen. */ }
         finally { backProgress = 0f }
     }
-    val scenic = !state.loading && state.fatalError == null && state.detail == null && !state.reviewOverview &&
-        (state.session != null || state.tab == Tab.HOME)
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (scenic) MountainWallpaper(isDark(state.appearance))
-        Scaffold(containerColor = Color.Transparent, snackbarHost = { SnackbarHost(snackbars) },
+        Scaffold(containerColor = Color.Transparent, contentWindowInsets = WindowInsets.safeDrawing,
+            snackbarHost = { SnackbarHost(snackbars) },
             bottomBar = {
                 if (state.session == null && !state.reviewOverview && state.detail == null && !state.loading) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
@@ -51,12 +64,12 @@ import kotlinx.coroutines.CancellationException
                     }
                 }
             }) { padding ->
-            Box(Modifier.padding(padding).fillMaxSize().graphicsLayer {
+            Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding().fillMaxSize().graphicsLayer {
                 scaleX = 1 - backProgress * 0.06f; scaleY = 1 - backProgress * 0.06f
-                translationX = backProgress * 32.dp.toPx()
+                translationX = backProgress * 32.dp.toPx() * backDirection
             }, contentAlignment = Alignment.TopCenter) {
                 AnimatedContent(targetState = state, contentKey = ::screenKey,
-                    modifier = Modifier.widthIn(max = 640.dp).fillMaxSize(),
+                    modifier = Modifier.widthIn(max = 840.dp).fillMaxSize(),
                     transitionSpec = { (fadeIn(tween(180)) + slideInHorizontally(tween(180)) { it / 16 }) togetherWith fadeOut(tween(120)) },
                     label = "screen") { state ->
                     Box(Modifier.fillMaxSize()) {
@@ -65,35 +78,22 @@ import kotlinx.coroutines.CancellationException
                             CircularProgressIndicator(); Spacer(Modifier.height(20.dp)); Text("正在准备离线词典…")
                         }
                         state.fatalError != null -> EmptyState("准备未完成", state.fatalError, "重试") { model.refresh() }
-                        state.session != null -> StudyScreen(state, speak, model::goBack, model::reveal, model::answer)
+                        state.session != null -> StudyScreen(state, speak, model::goBack, model::reveal, model::answer, model::undo,
+                            { model.start(state.session.mode) }, { model.start(SessionMode.LEARN, fresh = true) })
                         state.detail != null -> DictionaryScreen(state.detail,
                             state.snapshot?.words?.find { it.word == state.detail.word }?.additionCount ?: 0,
-                            state.snapshot?.book?.name.orEmpty(), speak, model::goBack, model::addCurrentWord)
+                            state.snapshot?.book?.name.orEmpty(), speak, model::goBack, model::addCurrentWord,
+                            state.adding, { model.start(SessionMode.LEARN) })
                         state.reviewOverview -> ReviewOverview(state, model::goBack) { model.start(SessionMode.REVIEW) }
                         state.tab == Tab.SEARCH -> SearchScreen(state, model::search) { model.openWord(it) }
                         state.tab == Tab.HOME -> HomeScreen(state, { model.selectBook(it) }, { model.createBook(it) },
-                            { model.start(SessionMode.LEARN) }, { model.showReview() }, { model.openWord(it) })
+                            { model.start(SessionMode.LEARN) }, { model.showReview() }, { model.changeTab(Tab.SEARCH) })
                         state.tab == Tab.BOOK -> BookScreen(state, { model.selectBook(it) }, { model.createBook(it) },
-                            { model.openWord(it) }, { model.removeWord(it) }, { model.start(SessionMode.LEARN) })
-                        else -> SettingsScreen(state, model::setAppearance, model::setRetention) { model.reset() }
+                            { model.openWord(it) }, { model.removeWord(it) }, { model.start(SessionMode.LEARN) }, { model.showReview() })
+                        else -> SettingsScreen(state, model::setAppearance, model::setRetention, model::setGroupSize) { model.reset() }
                     }
                     }
                 }
-            }
-        }
-    }
-    state.additionResult?.let { (word, count) ->
-        ModalBottomSheet(onDismissRequest = model::dismissAdded) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("已加入词书", style = MaterialTheme.typography.titleLarge)
-                Text(word, fontSize = 32.sp)
-                Text(state.snapshot?.book?.name.orEmpty())
-                Text("累计加入 $count 次", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
-                Text("新增 1 次重学任务 · 复习时优先安排")
-                AccentButton("去学习", { model.start(SessionMode.LEARN) }, Modifier.fillMaxWidth())
-                TextButton(model::dismissAdded) { Text("继续查词") }
-                QuietText("每次加入，都会重新学一次")
             }
         }
     }

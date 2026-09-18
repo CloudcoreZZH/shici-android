@@ -9,7 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-@Composable fun SettingsScreen(state: AppState, appearance: (Appearance) -> Unit, retention: (Double) -> Unit, reset: () -> Unit) {
+@Composable fun SettingsScreen(state: AppState, appearance: (Appearance) -> Unit, retention: (Double) -> Unit,
+                              groupSize: (Int) -> Unit, reset: () -> Unit) {
     var confirmReset by remember { mutableStateOf(false) }
     var target by remember(state.retention) { mutableFloatStateOf((state.retention * 100).toFloat()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -19,9 +20,14 @@ import kotlin.math.roundToInt
             QuietText("查一个词，认真记住它。")
             HorizontalDivider()
             Text("外观", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Appearance.entries.forEach { value -> FilterChip(value == state.appearance, { appearance(value) }, label = { Text(value.label) }) }
             }
+            Text("每组学习量", style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(5, 10, 20).forEach { value -> FilterChip(state.groupSize == value, { groupSize(value) }, label = { Text("$value 词") }) }
+            }
+            QuietText("新组生效。已开始的组会保留进度，同一组不会安排多条同词的加入任务。")
             Text("复习目标保持率 · ${target.roundToInt()}%", style = MaterialTheme.typography.titleMedium)
             Slider(value = target, onValueChange = { target = it }, valueRange = 70f..97f, steps = 26,
                 onValueChangeFinished = { retention(target.roundToInt() / 100.0) })
@@ -35,9 +41,10 @@ import kotlin.math.roundToInt
             HorizontalDivider()
             Text("离线词典", style = MaterialTheme.typography.titleMedium)
             Text("ECDICT · ${state.dictionarySize} 个词条")
-            QuietText("目前没有经过核验的考研真题义项频率，释义保持词典原顺序。词频与考试标签不等于义项频率。")
+            Text("学习编辑版 · ${state.editorialSize} 个词条与原创例句")
+            QuietText("部分多义词提供考研释义编辑优先级和原创例句，明确标注非频率统计、非真题。其余词保留完整原词典释义。")
             QuietText("发音使用手机已安装的离线英语语音。缺少语音时由系统设置管理，本应用不会自动下载。")
-            QuietText("版本 0.1.0 · Android 16\nECDICT：MIT · github.com/skywind3000/ECDICT\nFSRS：open-spaced-repetition/fsrs4anki")
+            QuietText("版本 ${io.github.shici.app.BuildConfig.VERSION_NAME} · Android 16\nECDICT：MIT · github.com/skywind3000/ECDICT\nFSRS：open-spaced-repetition/fsrs4anki")
             Spacer(Modifier.height(12.dp))
         }
     }

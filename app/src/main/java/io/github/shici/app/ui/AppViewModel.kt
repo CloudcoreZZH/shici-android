@@ -23,10 +23,12 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
     private val preferences = application.getSharedPreferences("settings", 0)
     private val mutations = Mutex()
     private var searchJob: Job? = null
+    private val meaningCache = mutableMapOf<String, String>()
     private val mutable = MutableStateFlow(AppState(
         tab = runCatching { Tab.valueOf(saved.get<String>("tab") ?: "HOME") }.getOrDefault(Tab.HOME),
         appearance = runCatching { Appearance.valueOf(preferences.getString("appearance", "SYSTEM")!!) }.getOrDefault(Appearance.SYSTEM),
         retention = preferences.getFloat("retention", 0.9f).toDouble().coerceIn(0.7, 0.97),
+        groupSize = preferences.getInt("groupSize", 10).coerceIn(5, 20),
     ))
     val state: StateFlow<AppState> = mutable.asStateFlow()
     val messages = Channel<String>(Channel.BUFFERED)
@@ -44,11 +46,17 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
             val books = repository.books()
             if (books.none { it.id == bookId }) bookId = books.first().id
             val snapshot = repository.snapshot(bookId, now)
-            val meanings = snapshot.words.associate { it.word to dictionary.find(it.word)?.senses?.firstOrNull()?.text.orEmpty() }
-            Triple(books, snapshot, meanings) to dictionary.size()
+            val meanings = snapshot.words.associate { word -> word.word to meaningCache.getOrPut(word.word) {
+                dictionary.find(word.word)?.learningSenses()?.firstOrNull()?.text.orEmpty()
+            } }
+            val sessions = SessionMode.entries.mapNotNull { mode ->
+                repository.session(bookId, mode)?.takeUnless { it.finished }?.let { mode to it }
+            }.toMap()
+            DashboardData(books, snapshot, meanings, dictionary.size(), dictionary.editorialSize, sessions)
         }
-        mutable.update { it.copy(loading = false, fatalError = null, now = now, books = result.first.first,
-            snapshot = result.first.second, meanings = result.first.third, dictionarySize = result.second) }
+        mutable.update { it.copy(loading = false, fatalError = null, now = now, books = result.books,
+            snapshot = result.snapshot, meanings = result.meanings, dictionarySize = result.dictionarySize,
+            editorialSize = result.editorialSize, savedSessions = result.sessions) }
     }
 
     fun changeTab(tab: Tab) {
@@ -57,7 +65,8 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
     }
     fun search(query: String) {
         searchJob?.cancel()
-        mutable.update { it.copy(query = query.take(100), searching = query.isNotBlank()) }
+        mutable.update { it.copy(query = query.take(100), searching = query.isNotBlank(),
+            searchResults = if (query.isBlank()) emptyList() else it.searchResults) }
         searchJob = launchSafely {
             delay(180)
             val results = withContext(Dispatchers.IO) { dictionary.search(query.take(100)) }
@@ -71,20 +80,21 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
     }
 
     fun addCurrentWord() {
+        if (state.value.adding) return
         val word = state.value.detail?.word ?: return
         val targetBook = bookId
         val action = UUID.randomUUID().toString()
+        mutable.update { it.copy(adding = true) }
         launchSafely {
+            try {
             mutations.withLock {
                 withContext(Dispatchers.IO) { repository.add(targetBook, word, action, Instant.now()) }
                 refreshData()
-                val count = state.value.snapshot?.words?.find { it.word == word }?.additionCount ?: 1
-                mutable.update { it.copy(additionResult = word to count) }
             }
+            } finally { mutable.update { it.copy(adding = false) } }
         }
     }
 
-    fun dismissAdded() { mutable.update { it.copy(additionResult = null) } }
     fun selectBook(id: Long) = launchSafely {
         mutations.withLock {
             bookId = id
@@ -112,25 +122,25 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
         mutations.withLock { refreshData(); mutable.update { it.copy(detail = null, reviewOverview = true) } }
     }
 
-    fun start(mode: SessionMode) = launchSafely {
+    fun start(mode: SessionMode, fresh: Boolean = false) = launchSafely {
         mutations.withLock {
             refreshData()
-            val items = if (mode == SessionMode.LEARN) withContext(Dispatchers.IO) {
-                repository.pendingTasks(bookId).map { StudyItem(it.word, taskId = it.id) }
-            } else state.value.dueWords.map { StudyItem(it.word, memoryVersion = it.memory!!.lastReviewedAt) }
-            if (items.isEmpty()) {
+            val progress = withContext(Dispatchers.IO) { repository.beginSession(bookId, mode, state.value.groupSize, state.value.now, fresh) }
+            if (progress == null) {
+                refreshData()
                 messages.send(if (mode == SessionMode.LEARN) "暂时没有待学词，先查一个词加入词书吧。" else "当前没有到期词，稍后再来。")
                 return@withLock
             }
-            val entry = withContext(Dispatchers.IO) { dictionary.find(items.first().word) }
-                ?: error("当前词典缺少待学词，请保留学习数据并更新词典。")
-            mutable.update { it.copy(session = StudySession(bookId, mode, items, entry = entry), detail = null,
-                additionResult = null, reviewOverview = false) }
+            val session = loadSession(progress)
+            mutable.update { it.copy(session = session, detail = null,
+                reviewOverview = false, savedSessions = it.savedSessions + (mode to progress)) }
         }
     }
 
-    fun reveal(rating: Rating = Rating.GOOD) {
-        mutable.update { it.copy(session = it.session?.copy(revealed = true, tentativeRating = rating)) }
+    fun reveal() {
+        val session = state.value.session ?: return
+        if (session.current?.availableAt?.isAfter(state.value.now) == true || session.saving) return
+        mutable.update { it.copy(session = it.session?.copy(revealed = true)) }
     }
 
     fun answer(rating: Rating) {
@@ -142,21 +152,14 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
         launchSafely {
             try {
                 mutations.withLock {
-                    val accepted = withContext(Dispatchers.IO) {
-                        repository.answer(session.bookId, item, session.mode, rating, actionId,
+                    val progress = withContext(Dispatchers.IO) {
+                        repository.answerSession(session.progress.bookId, session.mode, session.progress.id, item, rating, actionId,
                             Instant.now().truncatedTo(ChronoUnit.MILLIS), state.value.retention)
                     }
-                    if (!accepted) messages.send("这项任务已更新，本次没有重复记录。")
-                    val nextIndex = session.index + 1
-                    val nextEntry = session.items.getOrNull(nextIndex)?.let { next ->
-                        withContext(Dispatchers.IO) { dictionary.find(next.word) }
-                    }
+                    val next = loadSession(progress)
                     mutable.update { current ->
                         // Back can be pressed during an I/O operation; never reopen an exited session.
-                        if (current.session?.items !== session.items) current else current.copy(session = session.copy(
-                            index = nextIndex, entry = nextEntry, revealed = false, saving = false,
-                            finished = nextIndex == session.items.size,
-                        ))
+                        if (current.session?.progress?.id != session.progress.id) current else current.copy(session = next)
                     }
                     refreshData()
                 }
@@ -166,9 +169,38 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
         }
     }
 
+    fun undo() {
+        val session = state.value.session ?: return
+        val action = session.progress.lastActionId ?: return
+        if (session.saving) return
+        mutable.update { it.copy(session = session.copy(saving = true)) }
+        launchSafely {
+            try {
+                mutations.withLock {
+                    val progress = withContext(Dispatchers.IO) { repository.undoAnswer(session.progress.bookId, session.mode, action) }
+                    val restored = loadSession(progress.ordered(Instant.now()))
+                    mutable.update { if (it.session?.progress?.id == session.progress.id) it.copy(session = restored) else it }
+                    refreshData()
+                }
+            } finally { mutable.update { it.copy(session = it.session?.copy(saving = false)) } }
+        }
+    }
+
+    private suspend fun loadSession(progress: StudyProgress): StudySession {
+        val entry = progress.items.firstOrNull()?.let { item -> withContext(Dispatchers.IO) {
+            dictionary.find(item.word) ?: error("当前词典缺少待学词，请保留学习数据并更新词典。")
+        } }
+        return StudySession(progress, entry)
+    }
+
+    fun setGroupSize(value: Int) {
+        require(value in listOf(5, 10, 20))
+        preferences.edit { putInt("groupSize", value) }
+        mutable.update { it.copy(groupSize = value) }
+    }
+
     fun goBack() {
         mutable.update { when {
-            it.additionResult != null -> it.copy(additionResult = null)
             it.session != null -> it.copy(session = null)
             it.detail != null -> it.copy(detail = null)
             else -> it.copy(reviewOverview = false)
@@ -207,3 +239,7 @@ class AppViewModel(application: Application, private val saved: SavedStateHandle
         }
     }
 }
+
+private data class DashboardData(val books: List<WordBook>, val snapshot: BookSnapshot,
+    val meanings: Map<String, String>, val dictionarySize: Int, val editorialSize: Int,
+    val sessions: Map<SessionMode, StudyProgress>)

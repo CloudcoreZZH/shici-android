@@ -17,7 +17,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable fun BookScreen(state: AppState, choose: (Long) -> Unit, create: (String) -> Unit, open: (String) -> Unit,
-                          remove: (String) -> Unit, learn: () -> Unit) {
+                          remove: (String) -> Unit, learn: () -> Unit, review: () -> Unit = {}) {
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
@@ -35,13 +35,14 @@ import java.time.format.DateTimeFormatter
             Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         OutlinedTextField(query, { query = it.take(100) }, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
             singleLine = true, placeholder = { Text("搜索词书") })
-        Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("全部", "待学习", "待复习").forEachIndexed { index, title -> FilterChip(filter == index, { filter = index }, label = { Text(title) }) }
         }
         QuietText("按加入次数 ↓", Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (words.isEmpty()) item { EmptyState("这里还没有单词", "查词后点击加入，便能在这里学习。") }
+            if (words.isEmpty()) item { EmptyState(if (query.isNotBlank()) "没有匹配的单词" else "当前列表为空",
+                if (filter == 2) "还未到期的词会按记忆间隔出现。" else "可以调整筛选，或查词后加入当前词书。") }
             items(words, key = { it.word }) { word ->
                 Card(onClick = { open(word.word) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -59,8 +60,9 @@ import java.time.format.DateTimeFormatter
                 }
             }
         }
-        AccentButton("开始学习", learn, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-            enabled = (state.snapshot?.pendingCount ?: 0) > 0)
+        AccentButton(if (filter == 2) "去复习" else "开始学习", if (filter == 2) review else learn,
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+            enabled = if (filter == 2) state.dueWords.isNotEmpty() else (state.snapshot?.pendingCount ?: 0) > 0)
     }
     deleting?.let { word -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("移除 $word？") },
         text = { Text("将移除当前词书中这个词的所有加入记录、待学任务和复习记录。其他词书不受影响。") },

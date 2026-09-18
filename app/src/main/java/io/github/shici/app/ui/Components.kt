@@ -30,7 +30,7 @@ import io.github.shici.core.WordEntry
 
 @Composable fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(onClick, enabled = enabled, modifier = modifier.heightIn(min = 54.dp), shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Color(0xFF27140F))) {
+        colors = ButtonDefaults.buttonColors()) {
         Text(text, style = MaterialTheme.typography.labelLarge)
     }
 }

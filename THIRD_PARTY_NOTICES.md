@@ -14,6 +14,10 @@
 
 调度逻辑参考 [FSRS 官方算法说明](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm) 和 [py-fsrs](https://github.com/open-spaced-repetition/py-fsrs)，使用 FSRS-6 默认参数。工程中的实现和测试位于 `core/`。
 
+## 项目编辑资料
+
+`app/src/main/assets/editorial-notes.tsv` 包含项目内整理的学习优先释义及原创说明例句，未复制商业词典例句或历年真题。编辑顺序不表示真题统计频率，不构成对第三方资料许可的替代。
+
 ## 构建与运行依赖
 
 AndroidX、Kotlin、kotlinx.coroutines、JUnit、Robolectric 等依赖通过各模块的 Gradle 文件声明，依赖库各自适用其原有许可证。构建工具、依赖缓存、个人签名文件不随源码提交。

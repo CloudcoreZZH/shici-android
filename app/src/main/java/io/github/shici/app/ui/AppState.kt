@@ -6,17 +6,14 @@ import java.time.Instant
 enum class Tab(val label: String) { SEARCH("查词"), HOME("学习"), BOOK("词书"), SETTINGS("我的") }
 enum class Appearance(val label: String) { SYSTEM("跟随系统"), LIGHT("浅色"), DARK("深色") }
 data class StudySession(
-    val bookId: Long,
-    val mode: SessionMode,
-    val items: List<StudyItem>,
-    val index: Int = 0,
+    val progress: StudyProgress,
     val entry: WordEntry? = null,
     val revealed: Boolean = false,
-    val tentativeRating: Rating = Rating.GOOD,
     val saving: Boolean = false,
-    val finished: Boolean = false,
 ) {
-    val current get() = items.getOrNull(index)
+    val current get() = progress.items.firstOrNull()
+    val mode get() = progress.mode
+    val finished get() = progress.finished
 }
 data class AppState(
     val loading: Boolean = true,
@@ -30,13 +27,18 @@ data class AppState(
     val snapshot: BookSnapshot? = null,
     val meanings: Map<String, String> = emptyMap(),
     val dictionarySize: Int = 0,
-    val additionResult: Pair<String, Int>? = null,
+    val editorialSize: Int = 0,
+    val adding: Boolean = false,
     val session: StudySession? = null,
     val reviewOverview: Boolean = false,
     val appearance: Appearance = Appearance.SYSTEM,
     val retention: Double = 0.9,
+    val groupSize: Int = 10,
+    val savedSessions: Map<SessionMode, StudyProgress> = emptyMap(),
     val now: Instant = Instant.now(),
 ) {
     val dueWords get() = reviewQueue(snapshot?.words.orEmpty(), now)
     val canGoBack get() = detail != null || session != null || reviewOverview
+    val nextReviewAt get() = snapshot?.words.orEmpty().filter { it.pendingCount == 0 }
+        .mapNotNull { it.memory?.dueAt }.filter { it.isAfter(now) }.minOrNull()
 }

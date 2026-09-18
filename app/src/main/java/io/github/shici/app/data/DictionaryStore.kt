@@ -11,6 +11,8 @@ import java.util.Locale
 
 /** Immutable dictionary has its own database. It never opens or migrates personal progress. */
 class DictionaryStore(private val context: Context) {
+    private val editorial by lazy { EditorialNotes(context) }
+    val editorialSize get() = editorial.size
     private val database: SQLiteDatabase by lazy {
         val destination = File(context.noBackupFilesDir, "dictionary-v1.db")
         if (!destination.exists()) {
@@ -54,7 +56,7 @@ class DictionaryStore(private val context: Context) {
                 .take(12).joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 255) }
             Sense(id, line, stats[id]?.first, stats[id]?.second)
         }.toList()
-        return WordEntry(word, text("phonetic"), senses, text("definition"),
-            text("tags").split(' ').filter { it.isNotBlank() }.toSet(), text("exchange"))
+        return editorial.apply(WordEntry(word, text("phonetic"), senses, text("definition"),
+            text("tags").split(' ').filter { it.isNotBlank() }.toSet(), text("exchange")))
     }
 }

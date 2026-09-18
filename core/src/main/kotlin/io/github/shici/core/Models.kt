@@ -16,11 +16,24 @@ data class WordEntry(
     val tags: Set<String> = emptySet(),
     val exchange: String = "",
     val source: String = "ECDICT",
+    val editorialSenses: List<Sense> = emptyList(),
+    val example: String = "",
+    val exampleTranslation: String = "",
 ) {
     val hasExamStatistics get() = senses.any { it.examCount != null && !it.examSource.isNullOrBlank() }
     fun examSenses(): List<Sense> = senses.sortedWith(
         compareByDescending<Sense> { if (it.examSource.isNullOrBlank()) null else it.examCount }
     )
+    fun learningSenses(): List<Sense> = when {
+        hasExamStatistics -> examSenses()
+        editorialSenses.isNotEmpty() -> editorialSenses
+        else -> senses
+    }
+    val senseLabel get() = when {
+        hasExamStatistics -> "考研义项统计"
+        editorialSenses.isNotEmpty() -> "考研释义优先级"
+        else -> "完整词典释义"
+    }
 }
 
 enum class Rating(val value: Int, val label: String) {
@@ -53,13 +66,17 @@ data class BookWord(
 ) {
     fun isDue(now: Instant) = pendingCount == 0 && memory != null && !memory.dueAt.isAfter(now)
 }
-data class LearningTask(val id: String, val bookId: Long, val word: String, val addedAt: Instant)
-data class StudyItem(val word: String, val taskId: String? = null, val memoryVersion: Instant? = null)
+data class LearningTask(val id: String, val bookId: Long, val word: String, val addedAt: Instant,
+                        val availableAt: Instant = Instant.EPOCH)
+data class StudyItem(val word: String, val taskId: String? = null, val memoryVersion: Instant? = null,
+                     val availableAt: Instant = Instant.EPOCH)
 enum class SessionMode { LEARN, REVIEW }
 data class BookSnapshot(
     val book: WordBook,
     val words: List<BookWord>,
     val completedToday: Int,
+    val reviewedToday: Int = 0,
+    val readyLearningWords: Int = 0,
 ) {
     val pendingCount get() = words.sumOf { it.pendingCount }
     val totalAdditions get() = words.sumOf { it.additionCount }

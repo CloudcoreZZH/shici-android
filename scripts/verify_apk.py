@@ -2,6 +2,7 @@
 from pathlib import Path
 import hashlib
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -56,7 +57,8 @@ def main():
     assert not [issue for issue in issues if issue.attrib['severity'] in ('Error', 'Fatal')]
     destination = ROOT / 'dist'
     destination.mkdir(exist_ok=True)
-    delivered = destination / '拾词-0.1.0.apk'
+    version = re.search(r"versionName='([^']+)'", badging).group(1)
+    delivered = destination / f'拾词-{version}.apk'
     shutil.copy2(ROOT / APK, delivered)
     report = {'apk': delivered.name, 'bytes': delivered.stat().st_size,
               'sha256': hashlib.sha256(delivered.read_bytes()).hexdigest(),
